@@ -13,8 +13,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/joestump/a2tea/component"
-	"github.com/joestump/a2tea/render"
+	"github.com/joestump-agent/a2tea/component"
+	"github.com/joestump-agent/a2tea/render"
 )
 
 // Render parses a raw A2UI JSON document and returns a Bubble Tea model that

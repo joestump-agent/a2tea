@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/joestump/a2tea/event"
+	"github.com/joestump-agent/a2tea/event"
 )
 
 // TestEventsAreMessages pins that every event type is usable as a tea.Msg, so

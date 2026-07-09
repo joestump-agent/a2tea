@@ -7,9 +7,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/joestump/a2tea"
-	"github.com/joestump/a2tea/component"
-	"github.com/joestump/a2tea/render"
+	"github.com/joestump-agent/a2tea"
+	"github.com/joestump-agent/a2tea/component"
+	"github.com/joestump-agent/a2tea/render"
 )
 
 const sampleCard = `{"kind":"card","id":"hello","title":"Hi","body":"b","buttons":[{"id":"ok","label":"OK"}]}`

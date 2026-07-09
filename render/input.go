@@ -3,7 +3,7 @@ package render
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/joestump/a2tea/component"
+	"github.com/joestump-agent/a2tea/component"
 )
 
 // InputModel renders a component.Input.

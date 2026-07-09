@@ -17,7 +17,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/joestump/a2tea"
+	"github.com/joestump-agent/a2tea"
 )
 
 // sampleJSON is the A2UI document rendered by this example. Embedding it makes

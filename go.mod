@@ -1,4 +1,4 @@
-module github.com/joestump/a2tea
+module github.com/joestump-agent/a2tea
 
 go 1.26.3
 

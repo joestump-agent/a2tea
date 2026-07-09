@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/joestump/a2tea/component"
+	"github.com/joestump-agent/a2tea/component"
 )
 
 // TestUnmarshalKinds asserts every registered kind decodes to the right

@@ -34,7 +34,7 @@ import (
 
     tea "charm.land/bubbletea/v2"
 
-    "github.com/joestump/a2tea"
+    "github.com/joestump-agent/a2tea"
 )
 
 func main() {
@@ -69,10 +69,10 @@ bad document from an unimplemented renderer and fall back to plain text:
 
 ## Packages
 
-- `github.com/joestump/a2tea` — public entry point. `Render(raw) (tea.Model, error)` plus `Standalone` for running one renderer as its own program.
-- `github.com/joestump/a2tea/component` — typed union of components with a validating JSON unmarshaler (`Unmarshal`, `ErrEmptyDocument`, `ErrUnknownKind`, `ErrValidation`).
-- `github.com/joestump/a2tea/render` — one renderer per component kind, the embeddable `Model` contract, and a `For(c)` dispatcher.
-- `github.com/joestump/a2tea/event` — outbound `tea.Msg` types: `ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`, each carrying `Source`.
+- `github.com/joestump-agent/a2tea` — public entry point. `Render(raw) (tea.Model, error)` plus `Standalone` for running one renderer as its own program.
+- `github.com/joestump-agent/a2tea/component` — typed union of components with a validating JSON unmarshaler (`Unmarshal`, `ErrEmptyDocument`, `ErrUnknownKind`, `ErrValidation`).
+- `github.com/joestump-agent/a2tea/render` — one renderer per component kind, the embeddable `Model` contract, and a `For(c)` dispatcher.
+- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types: `ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`, each carrying `Source`.
 
 ## Composition
 
