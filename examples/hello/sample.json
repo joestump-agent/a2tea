@@ -2,7 +2,7 @@
   "kind": "card",
   "id": "hello-card",
   "title": "Hello from A2UI",
-  "body": "This card is rendered by a2tea. Press any key to quit.",
+  "body": "This card is rendered by a2tea. Press q to quit.",
   "buttons": [
     {
       "id": "ok",

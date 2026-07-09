@@ -11,19 +11,19 @@ import (
 // TODO(a2tea): support live chunk delivery via tea.Msg, autoscroll, and
 // optional glamour rendering when the stream is declared as markdown.
 type StreamModel struct {
+	base
 	c component.Stream
 }
 
 // NewStream builds a StreamModel for the given stream.
-func NewStream(c component.Stream) StreamModel { return StreamModel{c: c} }
+func NewStream(c component.Stream) *StreamModel { return &StreamModel{c: c} }
 
 // Init implements tea.Model.
-func (m StreamModel) Init() tea.Cmd { return nil }
+func (m *StreamModel) Init() tea.Cmd { return nil }
 
-// Update implements tea.Model.
-func (m StreamModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return m, quitOnKey(msg)
-}
+// Update implements tea.Model. It is a no-op stub and, per the composition
+// contract, never quits — the host owns program exit.
+func (m *StreamModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
 
 // View implements tea.Model.
-func (m StreamModel) View() tea.View { return placeholderView(component.KindStream) }
+func (m *StreamModel) View() tea.View { return placeholderView(component.KindStream) }

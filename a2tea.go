@@ -2,14 +2,14 @@
 // models so AI agents can drive rich terminal UI from a structured message
 // format.
 //
-// This is the scaffolding revision: the public API is fixed, but the
-// rendering and event roundtrip logic is intentionally stubbed. See the
-// Roadmap section of README.md for what is not yet implemented.
+// This is an early revision: the public API is fixed, but the rendering and
+// event roundtrip logic is intentionally stubbed. See the Roadmap section of
+// README.md for what is not yet implemented. The wire format is provisional
+// and A2UI-inspired — see docs/wire-format.md.
 package a2tea
 
 import (
 	"encoding/json"
-	"fmt"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -20,48 +20,70 @@ import (
 // Render parses a raw A2UI JSON document and returns a Bubble Tea model that
 // will render the described UI when run inside a tea.Program.
 //
-// TODO(a2tea): implement real JSON -> component.Component decoding, then
-// dispatch to the appropriate concrete renderer in the render package. The
-// current implementation always returns a notImplementedModel that shows a
-// placeholder string, even on parse error, so callers can wire the API in
-// before the parser exists.
+// The returned model is a render.Model: an embeddable child component, not a
+// standalone program. It does not handle quit or own the full terminal. To
+// run one directly (examples, manual testing), wrap it with Standalone.
+//
+// Render surfaces every failure as a non-nil error so a host application can
+// tell "the agent sent a bad document" from "the renderer isn't implemented
+// yet" and fall back to plain-text rendering:
+//   - an empty document returns component.ErrEmptyDocument,
+//   - an unknown kind returns component.ErrUnknownKind,
+//   - an invalid document returns an error wrapping component.ErrValidation,
+//   - malformed JSON returns the underlying decode error.
+//
+// All are matchable with errors.Is.
 func Render(raw json.RawMessage) (tea.Model, error) {
 	c, err := component.Unmarshal(raw)
 	if err != nil {
-		// TODO(a2tea): once Unmarshal is real, surface this error to the
-		// caller instead of swallowing it into a placeholder model.
-		return notImplementedModel{reason: fmt.Sprintf("parse error: %v", err)}, nil
-	}
-	if c == nil {
-		return notImplementedModel{reason: "empty document"}, nil
+		return nil, err
 	}
 	m, err := render.For(c)
 	if err != nil {
-		return notImplementedModel{reason: fmt.Sprintf("no renderer for %q", c.Kind())}, nil
+		return nil, err
 	}
 	return m, nil
 }
 
-// notImplementedModel is the placeholder model returned while the real
-// renderer pipeline is unimplemented. It satisfies tea.Model and exits on any
-// key press so the example program is well-behaved under a timeout.
-type notImplementedModel struct {
-	reason string
+// Standalone wraps a renderer so it can run as its own tea.Program. It owns
+// the two responsibilities a renderer deliberately does not: it quits on
+// Ctrl+C, q, or Esc, and it forwards terminal-size changes to the child via
+// SetSize. Hosts that embed a renderer inside a larger TUI do NOT use this —
+// they own quit and lay out the child themselves. Standalone exists for
+// examples and manual testing of a single component.
+func Standalone(child tea.Model) tea.Model {
+	return standaloneModel{child: child}
 }
 
-func (m notImplementedModel) Init() tea.Cmd { return nil }
+// standaloneModel is the root wrapper returned by Standalone.
+type standaloneModel struct {
+	child tea.Model
+}
 
-func (m notImplementedModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg.(type) {
-	case tea.KeyPressMsg, tea.QuitMsg:
-		return m, tea.Quit
+// sizer is the subset of render.Model that Standalone needs to lay the child
+// out. Accepting the interface (rather than render.Model) keeps Standalone
+// usable with any size-aware model.
+type sizer interface {
+	SetSize(width, height int)
+}
+
+func (m standaloneModel) Init() tea.Cmd { return m.child.Init() }
+
+func (m standaloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		if s, ok := m.child.(sizer); ok {
+			s.SetSize(msg.Width, msg.Height)
+		}
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return m, tea.Quit
+		}
 	}
-	return m, nil
+	child, cmd := m.child.Update(msg)
+	m.child = child
+	return m, cmd
 }
 
-func (m notImplementedModel) View() tea.View {
-	if m.reason == "" {
-		return tea.NewView("[a2tea: not implemented yet — press any key to quit]")
-	}
-	return tea.NewView(fmt.Sprintf("[a2tea: not implemented yet — %s — press any key to quit]", m.reason))
-}
+func (m standaloneModel) View() tea.View { return m.child.View() }
