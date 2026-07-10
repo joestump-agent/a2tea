@@ -77,12 +77,16 @@ func (s *Surface) View() tea.View {
 }
 
 // renderComponent renders the component with the given ID, recursing into
-// children. seen guards against reference cycles in malformed documents.
+// children. seen holds the IDs on the current ancestor path so genuine
+// reference cycles are caught; it is unwound on return (delete below) so a
+// component legally referenced by two parents — normal adjacency-list reuse —
+// is not mistaken for a cycle on its second occurrence.
 func (s *Surface) renderComponent(id string, seen map[string]bool) string {
 	if seen[id] {
 		return fmt.Sprintf("[a2tea: cycle at %q]", id)
 	}
 	seen[id] = true
+	defer delete(seen, id)
 
 	c, ok := s.byID[id]
 	if !ok {

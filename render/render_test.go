@@ -49,6 +49,36 @@ func TestSurfaceRootDetection(t *testing.T) {
 	}
 }
 
+func TestSurfaceSharedChildIsNotACycle(t *testing.T) {
+	// "shared" is legally referenced by two parents (adjacency-list reuse). It
+	// must render at both sites, not trip the cycle guard on the second.
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"row1", "row2"}}}},
+		{ID: "row1", Row: &a2ui.RowComponent{Children: a2ui.ChildList{IDs: []string{"shared"}}}},
+		{ID: "row2", Row: &a2ui.RowComponent{Children: a2ui.ChildList{IDs: []string{"shared"}}}},
+		text("shared", "twice"),
+	}
+	out := render.NewSurface(comps).View().Content
+	if strings.Contains(out, "cycle") {
+		t.Fatalf("shared child wrongly flagged as a cycle: %q", out)
+	}
+	if got := strings.Count(out, "twice"); got != 2 {
+		t.Fatalf("shared child should render at both parents; %q rendered %d times", "twice", got)
+	}
+}
+
+func TestSurfaceGenuineCycleIsCaught(t *testing.T) {
+	// root -> a -> root is a real ancestor loop and must still be caught.
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"a"}}}},
+		{ID: "a", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"root"}}}},
+	}
+	out := render.NewSurface(comps).View().Content
+	if !strings.Contains(out, "cycle") {
+		t.Fatalf("genuine cycle not caught: %q", out)
+	}
+}
+
 func TestSurfaceEmpty(t *testing.T) {
 	out := render.NewSurface(nil).View().Content
 	if !strings.Contains(out, "empty surface") {

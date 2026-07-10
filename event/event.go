@@ -1,95 +1,95 @@
 // Package event defines the outbound messages a2tea emits when a user
-// interacts with a rendered component. Each event is a tea.Msg so it flows
+// interacts with a rendered A2UI surface. Each event is a tea.Msg so it flows
 // through the standard bubbletea Update loop, and the consuming agent picks
 // them up from there.
 //
-// These types are stable from day one even though the renderers don't emit
-// them yet — fixing the wire format early lets agent-side code be written
-// against the real shape before the renderers catch up.
+// Status. These types predate a2tea's adoption of the real A2UI protocol
+// (github.com/tmc/a2ui) and no renderer emits them yet — the renderers are
+// still visual stubs. They are a provisional host-facing vocabulary and will
+// be re-grounded in A2UI catalog terms when the interaction round-trip is
+// built: A2UI models interactions as a Button's Action / a ClientMessage, has
+// TextField (not "input") and ChoicePicker (not "choice"), and has no Form
+// component at all (see the note on FormSubmitted). Treat the shapes here as
+// not yet stable.
 //
 // Source context. Every event embeds Source, which carries the IDs a consumer
 // needs to tell interactions apart when more than one component (or the same
-// reusable document rendered twice) is on screen. Without it, a bare
-// component-local ID like "ok" is ambiguous. The originating renderer fills
-// Source in when it dispatches the event; a standalone single-component
-// program can leave the fields empty.
+// component reused across a surface) is on screen. Without it, a bare
+// element-local ID like "ok" is ambiguous. The originating renderer fills
+// Source in when it dispatches the event.
 package event
 
 // Source identifies where an event originated. It is embedded in every event
-// type so consumers can route an interaction back to the specific component
-// (and, per A2UI, the surface) that produced it.
+// type so consumers can route an interaction back to the specific A2UI
+// component and the surface that produced it.
 type Source struct {
-	// ComponentID is the ID of the component that owns the interactive
-	// element — e.g. the Card or Form that contains the clicked button.
-	// It is distinct from the element-local ID carried by each event.
+	// ComponentID is the a2ui.Component ID of the interactive element (or the
+	// container it belongs to). It is distinct from any element-local ID an
+	// event carries.
 	ComponentID string
-	// SurfaceID is the A2UI surface the component was rendered on. It is
-	// zero until surfaces land (see docs/wire-format.md) but is fixed in
-	// the type now so adding it later is not a breaking change.
+	// SurfaceID is the A2UI surface the component was rendered on (the
+	// surfaceId from createSurface / updateComponents).
 	SurfaceID string
 }
 
-// ButtonClicked is emitted when the user activates a button (e.g. a Card
-// action button or a Form submit button).
+// ButtonClicked is emitted when the user activates an A2UI Button.
 //
-// TODO(a2tea): wire CardModel and FormModel to dispatch this with Source set.
+// TODO(a2tea): dispatch this from the renderer with Source set; map it to the
+// button's A2UI Action.
 type ButtonClicked struct {
 	Source
-	// ID is the button's element-local identifier, matching
-	// component.Button.ID on the originating component.
+	// ID is the a2ui.Component ID of the activated Button.
 	ID string
 }
 
-// InputSubmitted is emitted when the user confirms a standalone input value
-// by pressing Enter. Form submission does NOT emit one of these per field —
-// it emits a single FormSubmitted instead (see below).
+// InputSubmitted is emitted when the user confirms an A2UI TextField value.
 //
-// TODO(a2tea): wire InputModel to dispatch this with Source set.
+// TODO(a2tea): dispatch this from the renderer with Source set.
 type InputSubmitted struct {
 	Source
-	// ID is the input's element-local identifier.
+	// ID is the a2ui.Component ID of the TextField.
 	ID string
 	// Value is the final string value the user submitted.
 	Value string
 }
 
-// ChoiceSelected is emitted when the user picks a value from a single-select
-// Choice.
+// ChoiceSelected is emitted when the user picks from an A2UI ChoicePicker.
 //
-// Multi-select decision: ChoiceSelected stays single-valued. When a
-// multi-select component lands (likely, per the A2UI catalog), it gets its
-// own event type carrying a []string rather than widening this Value field —
-// widening would silently break every existing consumer that reads a single
-// string. Keeping the two distinct also lets a consumer pattern-match on
-// "single vs. multi" by type.
+// A2UI's ChoicePicker is natively multi-value (its value is a string list), so
+// when this event is wired it will likely carry a []string rather than a single
+// Value — one of the re-grounding tasks noted in the package doc. It is kept
+// single-valued here only until then.
 //
-// TODO(a2tea): wire ChoiceModel to dispatch this with Source set.
+// TODO(a2tea): dispatch this from the renderer with Source set; reconcile the
+// value shape with ChoicePicker's list value.
 type ChoiceSelected struct {
 	Source
-	// ID is the choice's element-local identifier.
+	// ID is the a2ui.Component ID of the ChoicePicker.
 	ID string
 	// Value is the selected option's value (NOT its label).
 	Value string
 }
 
-// FormSubmitted is emitted once when the user submits a Form. It carries every
-// field's value keyed by field ID, so a consumer gets one atomic, correlated
-// event instead of having to collect N loose InputSubmitted messages, know
-// when the set is complete, and correlate them back to a single submit action.
+// FormSubmitted is emitted once when the user submits a group of fields as a
+// unit, carrying every field's value keyed by field ID — so a consumer gets one
+// atomic, correlated event instead of collecting N loose InputSubmitted
+// messages and correlating them to a single submit action.
 //
-// TODO(a2tea): wire FormModel to dispatch this on submit.
+// Note: A2UI v0.9 has no Form component. A "form submit" corresponds to a
+// Button Action gathering the values of nearby TextField/ChoicePicker
+// components; this type will be re-grounded on that shape when wired.
+//
+// TODO(a2tea): dispatch this from the renderer on the submitting Button's
+// Action.
 type FormSubmitted struct {
 	Source
-	// FormID is the submitted form's identifier (component.Form.ID). It is
-	// also mirrored in Source.ComponentID; FormID is kept as the primary,
-	// self-documenting name for a form submission.
+	// FormID identifies the submitted group (mirrored in Source.ComponentID;
+	// kept as a self-documenting primary name).
 	FormID string
-	// SubmitID is the ID of the submit button that triggered the
-	// submission, distinguishing multiple actions on the same form (e.g.
+	// SubmitID is the a2ui.Component ID of the Button that triggered the
+	// submission, distinguishing multiple actions in the same group (e.g.
 	// "save" vs. "save and close").
 	SubmitID string
-	// Values maps each field's element-local ID to its final string value.
-	// Multi-value fields are out of scope until a multi-select field lands
-	// alongside the multi-select event described on ChoiceSelected.
+	// Values maps each field's a2ui.Component ID to its final string value.
 	Values map[string]string
 }
