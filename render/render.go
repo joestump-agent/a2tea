@@ -211,6 +211,19 @@ func (s *Surface) renderComponent(id string, seen map[string]bool) string {
 	}
 }
 
+// withWidth renders f under a temporarily narrowed width budget and restores
+// the previous budget afterwards. s.width therefore always holds the budget
+// for the subtree currently being rendered — the host-allocated width at the
+// root, minus each enclosing container's chrome (a Card's border+padding, a
+// List's bullet indent). Rendering is a single-goroutine depth-first pass, so
+// the save/restore is safe.
+func (s *Surface) withWidth(w int, f func() string) string {
+	old := s.width
+	s.width = w
+	defer func() { s.width = old }()
+	return f()
+}
+
 // renderChildren renders each child ID in a ChildList in order. The
 // dynamic-template form of ChildList is not yet supported (no data model);
 // it renders a single placeholder.

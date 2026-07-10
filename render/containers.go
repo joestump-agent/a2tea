@@ -31,20 +31,35 @@ func (s *Surface) renderRow(c a2ui.Component, seen map[string]bool) string {
 }
 
 // renderList renders a List component. Vertical lists (the default when
-// Direction is unset) bullet each child block; horizontal lists lay children
-// out like a Row.
+// Direction is unset) bullet each child block — rendering the children under
+// a budget narrowed by the 2-cell bullet indent so wrapped lines still fit —
+// while horizontal lists lay children out like a Row.
 func (s *Surface) renderList(c a2ui.Component, seen map[string]bool) string {
-	parts := s.renderChildren(c.List.Children, seen)
+	if c.List.Direction == a2ui.ListDirectionHorizontal {
+		return joinRow(s.renderChildren(c.List.Children, seen))
+	}
+	childWidth := s.width
+	if childWidth > 2 {
+		childWidth -= 2
+	}
+	parts := s.withWidthParts(childWidth, c.List.Children, seen)
 	if len(parts) == 0 {
 		return ""
-	}
-	if c.List.Direction == a2ui.ListDirectionHorizontal {
-		return joinRow(parts)
 	}
 	for i, p := range parts {
 		parts[i] = bullet(p)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// withWidthParts renders a ChildList under a narrowed width budget.
+func (s *Surface) withWidthParts(w int, cl a2ui.ChildList, seen map[string]bool) []string {
+	var parts []string
+	s.withWidth(w, func() string {
+		parts = s.renderChildren(cl, seen)
+		return ""
+	})
+	return parts
 }
 
 // renderDivider renders a Divider component: a horizontal rule sized to the

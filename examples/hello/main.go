@@ -7,8 +7,9 @@
 // embeddable model. Here we wrap that model in a2tea.Standalone to run it as a
 // self-contained program (quits on q / Esc / Ctrl+C).
 //
-// The renderers are still visual stubs, so the surface draws a placeholder tree
-// today; the point is to show the scan → render flow end-to-end.
+// The surface draws a styled card: an h1 title, body text, a divider, and a
+// row of two buttons. Tab / Shift+Tab move button focus and Enter emits
+// event.ButtonClicked (not displayed anywhere yet).
 package main
 
 import (

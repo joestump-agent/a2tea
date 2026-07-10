@@ -7,14 +7,18 @@ Here's a little UI to try:
     "surfaceId": "main",
     "components": [
       { "component": "Card", "id": "root", "child": "col" },
-      { "component": "Column", "id": "col", "children": ["title", "body", "ok"] },
-      { "component": "Text", "id": "title", "text": "Hello from A2UI" },
+      { "component": "Column", "id": "col", "children": ["title", "body", "div", "btns"] },
+      { "component": "Text", "id": "title", "text": "Hello from A2UI", "variant": "h1" },
       { "component": "Text", "id": "body", "text": "This surface was described as A2UI JSON and rendered by a2tea." },
-      { "component": "Button", "id": "ok", "action": { "functionCall": { "call": "openUrl", "args": { "url": "https://a2ui.org" }, "returnType": "void" } }, "child": "oklabel" },
-      { "component": "Text", "id": "oklabel", "text": "OK" }
+      { "component": "Divider", "id": "div" },
+      { "component": "Row", "id": "btns", "children": ["ok", "docs"] },
+      { "component": "Button", "id": "ok", "action": { "functionCall": { "call": "ack", "args": {}, "returnType": "void" } }, "child": "oklbl" },
+      { "component": "Text", "id": "oklbl", "text": "OK" },
+      { "component": "Button", "id": "docs", "action": { "functionCall": { "call": "openUrl", "args": { "url": "https://a2ui.org" }, "returnType": "void" } }, "child": "docslbl" },
+      { "component": "Text", "id": "docslbl", "text": "Docs" }
     ]
   }
 }
 </a2ui-json>
 
-Press q to quit.
+Tab moves between the buttons; press q to quit.

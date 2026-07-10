@@ -4,13 +4,23 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
 	a2ui "github.com/tmc/a2ui"
 
+	"github.com/joestump-agent/a2tea/event"
 	"github.com/joestump-agent/a2tea/render"
 )
 
 func text(id, s string) a2ui.Component {
 	return a2ui.Component{ID: id, Text: &a2ui.TextComponent{Text: a2ui.StringLiteral(s)}}
+}
+
+// renderPlain renders comps as a surface and returns the view with all ANSI
+// styling stripped, so tests assert on structure rather than escape codes.
+func renderPlain(comps []a2ui.Component) string {
+	return ansi.Strip(render.NewSurface("s", comps).View().Content)
 }
 
 // surface: card(root) -> column(col) -> [title, body]
@@ -24,15 +34,25 @@ func sampleComponents() []a2ui.Component {
 }
 
 func TestSurfaceRendersTree(t *testing.T) {
-	s := render.NewSurface("s", sampleComponents())
-	out := s.View().Content
+	out := renderPlain(sampleComponents())
 
-	// Both text leaves appear, and the column stacks them on separate lines.
-	if !strings.Contains(out, "Title Line") || !strings.Contains(out, "Body line") {
+	// Both text leaves appear.
+	titleIdx := strings.Index(out, "Title Line")
+	bodyIdx := strings.Index(out, "Body line")
+	if titleIdx < 0 || bodyIdx < 0 {
 		t.Fatalf("rendered surface missing text: %q", out)
 	}
-	if !strings.Contains(out, "Title Line\nBody line") {
+	// The column stacks them in order on separate lines (the card border adds
+	// chrome around each line, so exact adjacency is not asserted).
+	if titleIdx > bodyIdx {
+		t.Fatalf("title should render before body: %q", out)
+	}
+	if !strings.Contains(out[titleIdx:bodyIdx], "\n") {
 		t.Fatalf("column should stack children on separate lines: %q", out)
+	}
+	// The card draws a rounded border around the column.
+	if !strings.Contains(out, "╭") || !strings.Contains(out, "╰") {
+		t.Fatalf("card should draw a rounded border: %q", out)
 	}
 }
 
@@ -43,7 +63,7 @@ func TestSurfaceRootDetection(t *testing.T) {
 		text("title", "Only Child"),
 		{ID: "root", Card: &a2ui.CardComponent{Child: "title"}},
 	}
-	out := render.NewSurface("s", comps).View().Content
+	out := renderPlain(comps)
 	if !strings.Contains(out, "Only Child") {
 		t.Fatalf("root not resolved to the card: %q", out)
 	}
@@ -58,7 +78,7 @@ func TestSurfaceSharedChildIsNotACycle(t *testing.T) {
 		{ID: "row2", Row: &a2ui.RowComponent{Children: a2ui.ChildList{IDs: []string{"shared"}}}},
 		text("shared", "twice"),
 	}
-	out := render.NewSurface("s", comps).View().Content
+	out := renderPlain(comps)
 	if strings.Contains(out, "cycle") {
 		t.Fatalf("shared child wrongly flagged as a cycle: %q", out)
 	}
@@ -73,14 +93,14 @@ func TestSurfaceGenuineCycleIsCaught(t *testing.T) {
 		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"a"}}}},
 		{ID: "a", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"root"}}}},
 	}
-	out := render.NewSurface("s", comps).View().Content
+	out := renderPlain(comps)
 	if !strings.Contains(out, "cycle") {
 		t.Fatalf("genuine cycle not caught: %q", out)
 	}
 }
 
 func TestSurfaceEmpty(t *testing.T) {
-	out := render.NewSurface("s", nil).View().Content
+	out := renderPlain(nil)
 	if !strings.Contains(out, "empty surface") {
 		t.Fatalf("empty surface = %q, want a placeholder", out)
 	}
@@ -90,9 +110,135 @@ func TestSurfaceMissingChildIsFlagged(t *testing.T) {
 	comps := []a2ui.Component{
 		{ID: "root", Card: &a2ui.CardComponent{Child: "nope"}},
 	}
-	out := render.NewSurface("s", comps).View().Content
+	out := renderPlain(comps)
 	if !strings.Contains(out, "missing component") {
 		t.Fatalf("dangling child ref should be flagged: %q", out)
+	}
+}
+
+func TestButtonChrome(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "btn", Button: &a2ui.ButtonComponent{Child: "lbl"}},
+		text("lbl", "OK"),
+	}
+	out := renderPlain(comps)
+	if !strings.Contains(out, "[ OK ]") {
+		t.Fatalf("button should render bracketed chrome: %q", out)
+	}
+}
+
+func TestButtonFocusCycleAndActivate(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"b1", "b2"}}}},
+		{ID: "b1", Button: &a2ui.ButtonComponent{Child: "l1"}},
+		{ID: "b2", Button: &a2ui.ButtonComponent{Child: "l2"}},
+		text("l1", "First"),
+		text("l2", "Second"),
+	}
+	s := render.NewSurface("surf", comps)
+	s.Focus()
+
+	press := func(code rune) tea.Cmd {
+		_, cmd := s.Update(tea.KeyPressMsg{Code: code})
+		return cmd
+	}
+	clicked := func(t *testing.T, cmd tea.Cmd) event.ButtonClicked {
+		t.Helper()
+		if cmd == nil {
+			t.Fatal("enter on a focused button returned nil cmd")
+		}
+		msg := cmd()
+		ev, ok := msg.(event.ButtonClicked)
+		if !ok {
+			t.Fatalf("cmd produced %T, want event.ButtonClicked", msg)
+		}
+		return ev
+	}
+
+	// Initial focus is the first button in tree order.
+	ev := clicked(t, press(tea.KeyEnter))
+	if ev.ID != "b1" || ev.ComponentID != "b1" || ev.SurfaceID != "surf" {
+		t.Fatalf("first activation = %+v, want ID/ComponentID b1 on surface surf", ev)
+	}
+
+	// Tab moves focus to the second button.
+	if cmd := press(tea.KeyTab); cmd != nil {
+		t.Fatalf("tab produced an unexpected cmd: %#v", cmd())
+	}
+	ev = clicked(t, press(tea.KeyEnter))
+	if ev.ID != "b2" || ev.ComponentID != "b2" || ev.SurfaceID != "surf" {
+		t.Fatalf("post-tab activation = %+v, want ID/ComponentID b2 on surface surf", ev)
+	}
+}
+
+func TestDividerRendersRule(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "d", Divider: &a2ui.DividerComponent{}},
+	}
+	out := renderPlain(comps)
+	if !strings.Contains(out, "─") {
+		t.Fatalf("horizontal divider should render a rule: %q", out)
+	}
+}
+
+func TestVerticalListBullets(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", List: &a2ui.ListComponent{Children: a2ui.ChildList{IDs: []string{"i1", "i2"}}}},
+		text("i1", "alpha"),
+		text("i2", "beta"),
+	}
+	out := renderPlain(comps)
+	if got := strings.Count(out, "• "); got != 2 {
+		t.Fatalf("vertical list should bullet each item; got %d bullets in %q", got, out)
+	}
+	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
+		t.Fatalf("list items missing: %q", out)
+	}
+}
+
+func TestCheckBoxMarks(t *testing.T) {
+	checkbox := func(checked bool) []a2ui.Component {
+		return []a2ui.Component{
+			{ID: "cb", CheckBox: &a2ui.CheckBoxComponent{
+				Label: a2ui.StringLiteral("Done"),
+				Value: a2ui.BoolLiteral(checked),
+			}},
+		}
+	}
+	if out := renderPlain(checkbox(true)); !strings.Contains(out, "[x] Done") {
+		t.Fatalf("checked box = %q, want \"[x] Done\"", out)
+	}
+	if out := renderPlain(checkbox(false)); !strings.Contains(out, "[ ] Done") {
+		t.Fatalf("unchecked box = %q, want \"[ ] Done\"", out)
+	}
+}
+
+func TestSliderRendersBar(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "sl", Slider: &a2ui.SliderComponent{
+			Max:   100,
+			Value: a2ui.NumberLiteral(50),
+		}},
+	}
+	out := renderPlain(comps)
+	// Mid-range value: bar has both filled and empty cells, value appended.
+	if !strings.Contains(out, "█") || !strings.Contains(out, "─") {
+		t.Fatalf("slider should render a partially filled bar: %q", out)
+	}
+	if !strings.Contains(out, "50") {
+		t.Fatalf("slider should append its numeric value: %q", out)
+	}
+}
+
+func TestTextH1KeepsText(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "t", Text: &a2ui.TextComponent{
+			Text:    a2ui.StringLiteral("Big Title"),
+			Variant: a2ui.TextVariantH1,
+		}},
+	}
+	if out := renderPlain(comps); !strings.Contains(out, "Big Title") {
+		t.Fatalf("h1 text lost its content: %q", out)
 	}
 }
 
