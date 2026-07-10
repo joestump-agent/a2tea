@@ -1,124 +1,93 @@
 # a2tea
 
-**A2UI ↔ Bubble Tea renderer bridge.**
+**A2UI → Bubble Tea bridge.**
 
-`a2tea` maps [A2UI](https://a2ui.org)-inspired JSON messages onto
-[Bubble Tea](https://github.com/charmbracelet/bubbletea) models so AI agents
-can drive rich terminal UI from a structured wire format instead of dumping
-raw text. The eventual consumer is Joe's fork of
-[`charmbracelet/crush`](https://github.com/charmbracelet/crush) — this
-library is the bridge that lets an agent speak a structured UI format and have
-crush draw the result.
+`a2tea` lets an AI agent drive a terminal UI with [A2UI](https://a2ui.org): it
+parses the A2UI messages an agent emits — interleaved with conversational text
+in an LLM response — and renders the described surfaces as
+[Bubble Tea](https://github.com/charmbracelet/bubbletea) models. The consumer is
+Joe's fork of [`charmbracelet/crush`](https://github.com/charmbracelet/crush):
+a2tea is the bridge that lets crush recognize A2UI in a model's reply and draw
+it instead of dumping raw JSON.
 
-> **Wire format is provisional.** The JSON shape implemented here is
-> *A2UI-inspired*, not a verified transcription of the a2ui.org spec — no
-> containers, `children`, surfaces, or data binding yet. See
-> [`docs/wire-format.md`](docs/wire-format.md) for exactly how it diverges and
-> the decision still owed before a plain "A2UI compatible" claim is accurate.
+a2tea targets the **real A2UI protocol (v0.9)** via
+[`github.com/tmc/a2ui`](https://pkg.go.dev/github.com/tmc/a2ui) — it does not
+define its own component types. It parses A2UI out of model output with
+[`a2uistream`](https://pkg.go.dev/github.com/tmc/a2ui/a2uistream). See
+[`docs/wire-format.md`](docs/wire-format.md).
 
-This repository is early. The public API surface is fixed and the input path
-(decode + validate + dispatch) is real, but the renderers themselves are still
-stubs that draw a `[a2tea: <kind>]` placeholder, and no renderer emits
-interaction events yet. See the [Roadmap](#roadmap) for what is and is not yet
-implemented.
+This repository is early: the parse path and component catalog are the real
+protocol, but the renderers are still visual stubs — a surface's tree is walked
+and text renders literally, while interactive/media components draw a
+`[a2tea: <kind>]` placeholder.
 
 ## Usage
 
+A host feeds an assistant reply to `Scan`, renders each part's text as prose,
+and hands each part's A2UI messages to `Render`:
+
 ```go
-package main
-
-import (
-    "encoding/json"
-    "log"
-    "os"
-
-    tea "charm.land/bubbletea/v2"
-
-    "github.com/joestump-agent/a2tea"
-)
-
-func main() {
-    raw, err := os.ReadFile("sample.json")
-    if err != nil {
-        log.Fatal(err)
+parts, err := a2tea.Scan(reply)
+if err != nil {
+    // not valid A2UI — render `reply` as plain text
+}
+for _, p := range parts {
+    if p.Text != "" {
+        renderProse(p.Text)
     }
-
-    model, err := a2tea.Render(json.RawMessage(raw))
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    if _, err := tea.NewProgram(model).Run(); err != nil {
-        log.Fatal(err)
+    if len(p.Messages) > 0 {
+        model, err := a2tea.Render(p.Messages)
+        if err != nil {
+            continue // no renderable surface in these messages
+        }
+        draw(model) // an embeddable tea.Model
     }
 }
 ```
 
-`Render` returns an *embeddable* child component (see
-[Composition](#composition)), so the model it returns does not handle quit or
-own the terminal. To run one directly — as the snippet above does — wrap it
-with `a2tea.Standalone`, which quits on `q` / `Esc` / `Ctrl+C` and forwards the
-terminal size. A runnable version of this flow lives in
-[`examples/hello`](examples/hello/). Today it prints a `[a2tea: card]`
-placeholder; once the renderers land it will draw a real card.
+`a2tea.Contains(reply)` is a cheap check for whether a reply has any A2UI at all.
 
-`Render` also surfaces every failure as a non-nil error, so a host can tell a
-bad document from an unimplemented renderer and fall back to plain text:
-`component.ErrEmptyDocument`, `component.ErrUnknownKind`, and validation errors
-(wrapping `component.ErrValidation`) are all matchable with `errors.Is`.
+`Render` returns an *embeddable* child component (see [Composition](#composition)),
+so it does not handle quit or own the terminal. To run one directly, wrap it
+with `a2tea.Standalone`, which quits on `q` / `Esc` / `Ctrl+C` and forwards the
+terminal size. A runnable version of the whole flow lives in
+[`examples/hello`](examples/hello/).
 
 ## Packages
 
-- `github.com/joestump-agent/a2tea` — public entry point. `Render(raw) (tea.Model, error)` plus `Standalone` for running one renderer as its own program.
-- `github.com/joestump-agent/a2tea/component` — typed union of components with a validating JSON unmarshaler (`Unmarshal`, `ErrEmptyDocument`, `ErrUnknownKind`, `ErrValidation`).
-- `github.com/joestump-agent/a2tea/render` — one renderer per component kind, the embeddable `Model` contract, and a `For(c)` dispatcher.
-- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types: `ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`, each carrying `Source`.
+- `github.com/joestump-agent/a2tea` — public entry point: `Contains`, `Scan(reply) ([]Part, error)`, `Render(msgs) (tea.Model, error)`, and `Standalone`.
+- `github.com/joestump-agent/a2tea/render` — walks an A2UI surface (components referencing children by ID) into an embeddable `render.Model`.
+- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types a host can consume for interaction results (`ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`), each carrying `Source`. Not emitted yet.
+
+A2UI message and component types come from `github.com/tmc/a2ui`.
 
 ## Composition
 
 Renderers are built to be embedded as children of a larger TUI (crush), not to
 own their own program. The `render.Model` contract extends `tea.Model` with
 `SetSize(w, h)` and `Focus()`/`Blur()`/`Focused()`, and **no renderer ever
-calls `tea.Quit`** — quitting is the host's decision. Interaction results are
-reported as `event` messages rather than by side effect. Use `a2tea.Standalone`
-to run a single renderer on its own for examples and manual testing.
+calls `tea.Quit`** — quitting is the host's decision. Use `a2tea.Standalone` to
+run a single surface on its own for examples and manual testing.
 
 ## Roadmap
 
-What **is** done: `component.Unmarshal` decodes and validates every field,
-returns real errors (no more silent zero-value degradation), and decodes
-heterogeneous form fields by their own `kind`; `a2tea.Render` propagates those
-errors; the `event` types carry `Source` context and include `FormSubmitted`;
-and every renderer satisfies the embeddable `render.Model` contract.
+The renderers are visual stubs. What is **not** yet implemented:
 
-What is **not** yet implemented (and is currently marked with
-`// TODO(a2tea):` in source):
-
-- **Container kinds & spec conformance.** No `children`/container support and
-  no verification against a pinned a2ui.org schema — see
-  [`docs/wire-format.md`](docs/wire-format.md).
-- **Real renderers.** Every `render/*Model` returns a `[a2tea: <kind>]`
-  placeholder. The real implementations should use `charm.land/bubbles/v2`
-  (textinput, list, progress), `charm.land/glamour/v2` (markdown), and
-  `charm.land/lipgloss/v2` (layout).
-- **Form support.** `FormModel` should wrap `huh.Form` so field
-  navigation, validation, and submission work without bespoke code. The
-  `huh` dependency is intentionally **not** in `go.mod` yet — the
-  published `charmbracelet/huh v1.0.0` pins older
-  `charm.land/x/ansi` internals that conflict with the v2 stack this
-  module shares with crush. Pull it back in once a huh release compatible
-  with the v2 ecosystem ships.
-- **Event roundtrip.** The types in `event/` are defined (and now carry
-  `Source` context) but no renderer emits them yet. Once they do, agents will
-  consume them from the standard `tea.Msg` channel inside their own `Update`.
-- **Live streaming.** `StreamModel` only accepts a static `Chunks` slice;
-  there's no channel-based live append yet.
+- **Real per-component rendering** with `charm.land/lipgloss/v2`,
+  `charm.land/bubbles/v2`, and `charm.land/glamour/v2` instead of the
+  `[a2tea: <kind>]` placeholders.
+- **Data model.** `DynamicString` bindings/function calls render as
+  `{binding}` / `{fn}`; `updateDataModel` is not applied.
+- **Surface lifecycle.** Only the latest `updateComponents` is drawn;
+  `createSurface` theming/catalog, `deleteSurface`, multi-surface compositing,
+  and `ChildList` templates are not handled.
+- **Interaction round-trip.** A2UI `Action`/`ClientMessage` events are not yet
+  emitted back to the agent; the `event` types are defined but unused.
 
 ## Versioning
 
-This is pre-1.0 and the public API may change. Once the renderers and
-event roundtrip are real and exercised by a downstream consumer (crush),
-a `v0.1.0` tag will be cut.
+This is pre-1.0 and the public API may change. Once the renderers and event
+round-trip are real and exercised by crush, a `v0.1.0` tag will be cut.
 
 ## License
 

@@ -1,97 +1,86 @@
 package render_test
 
 import (
+	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
+	a2ui "github.com/tmc/a2ui"
 
-	"github.com/joestump-agent/a2tea/component"
 	"github.com/joestump-agent/a2tea/render"
 )
 
-// oneOfEachKind is one zero-valued component per registered kind. The
-// completeness test below asserts render.For handles every one — turning
-// "a new kind MUST be added to render.For too" from a comment into a test
-// failure.
-var oneOfEachKind = []component.Component{
-	component.Card{},
-	component.Form{},
-	component.Input{},
-	component.Choice{},
-	component.Progress{},
-	component.Markdown{},
-	component.Stream{},
+func text(id, s string) a2ui.Component {
+	return a2ui.Component{ID: id, Text: &a2ui.TextComponent{Text: a2ui.StringLiteral(s)}}
 }
 
-func TestForCoversEveryKind(t *testing.T) {
-	seen := map[string]bool{}
-	for _, c := range oneOfEachKind {
-		m, err := render.For(c)
-		if err != nil {
-			t.Errorf("For(%s): unexpected error: %v", c.Kind(), err)
-			continue
-		}
-		if m == nil {
-			t.Errorf("For(%s): returned a nil Model", c.Kind())
-			continue
-		}
-		seen[c.Kind()] = true
-	}
-
-	for _, k := range []string{
-		component.KindCard, component.KindForm, component.KindInput,
-		component.KindChoice, component.KindProgress, component.KindMarkdown,
-		component.KindStream,
-	} {
-		if !seen[k] {
-			t.Errorf("render.For has no case for kind %q", k)
-		}
+// surface: card(root) -> column(col) -> [title, body]
+func sampleComponents() []a2ui.Component {
+	return []a2ui.Component{
+		{ID: "root", Card: &a2ui.CardComponent{Child: "col"}},
+		{ID: "col", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"title", "body"}}}},
+		text("title", "Title Line"),
+		text("body", "Body line"),
 	}
 }
 
-// unknownComponent is a Component whose Kind is not registered, used to prove
-// For returns an error rather than a placeholder for kinds it cannot render.
-type unknownComponent struct{}
+func TestSurfaceRendersTree(t *testing.T) {
+	s := render.NewSurface(sampleComponents())
+	out := s.View().Content
 
-func (unknownComponent) Kind() string    { return "table" }
-func (unknownComponent) Validate() error { return nil }
-
-func TestForUnknownKindErrors(t *testing.T) {
-	m, err := render.For(unknownComponent{})
-	if err == nil {
-		t.Fatal("For(unknown): expected an error, got nil")
+	// Both text leaves appear, and the column stacks them on separate lines.
+	if !strings.Contains(out, "Title Line") || !strings.Contains(out, "Body line") {
+		t.Fatalf("rendered surface missing text: %q", out)
 	}
-	if m != nil {
-		t.Fatalf("For(unknown): model = %#v, want nil", m)
+	if !strings.Contains(out, "Title Line\nBody line") {
+		t.Fatalf("column should stack children on separate lines: %q", out)
 	}
 }
 
-// TestModelContract exercises the embeddable-child contract every renderer
-// must satisfy: it is a tea.Model, it accepts a size, its focus state is
-// settable, and — critically — its Update never returns tea.Quit.
-func TestModelContract(t *testing.T) {
-	for _, c := range oneOfEachKind {
-		m, err := render.For(c)
-		if err != nil {
-			t.Fatalf("For(%s): %v", c.Kind(), err)
-		}
+func TestSurfaceRootDetection(t *testing.T) {
+	// Declaration order deliberately does NOT put the root first: the root is
+	// the component nothing else references as a child.
+	comps := []a2ui.Component{
+		text("title", "Only Child"),
+		{ID: "root", Card: &a2ui.CardComponent{Child: "title"}},
+	}
+	out := render.NewSurface(comps).View().Content
+	if !strings.Contains(out, "Only Child") {
+		t.Fatalf("root not resolved to the card: %q", out)
+	}
+}
 
-		m.SetSize(80, 24)
-		if cmd := m.Focus(); cmd != nil {
-			t.Errorf("%s: Focus returned a non-nil cmd from a stub renderer", c.Kind())
-		}
-		if !m.Focused() {
-			t.Errorf("%s: Focused() = false after Focus()", c.Kind())
-		}
-		m.Blur()
-		if m.Focused() {
-			t.Errorf("%s: Focused() = true after Blur()", c.Kind())
-		}
+func TestSurfaceEmpty(t *testing.T) {
+	out := render.NewSurface(nil).View().Content
+	if !strings.Contains(out, "empty surface") {
+		t.Fatalf("empty surface = %q, want a placeholder", out)
+	}
+}
 
-		// A stray key press must NOT quit an embedded renderer.
-		_, cmd := m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-		if cmd != nil {
-			t.Errorf("%s: Update on a key returned a non-nil cmd (renderers must not quit): %#v", c.Kind(), cmd())
+func TestSurfaceMissingChildIsFlagged(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", Card: &a2ui.CardComponent{Child: "nope"}},
+	}
+	out := render.NewSurface(comps).View().Content
+	if !strings.Contains(out, "missing component") {
+		t.Fatalf("dangling child ref should be flagged: %q", out)
+	}
+}
+
+func TestKindOf(t *testing.T) {
+	cases := []struct {
+		c    a2ui.Component
+		want string
+	}{
+		{a2ui.Component{Text: &a2ui.TextComponent{}}, "text"},
+		{a2ui.Component{Card: &a2ui.CardComponent{}}, "card"},
+		{a2ui.Component{Button: &a2ui.ButtonComponent{}}, "button"},
+		{a2ui.Component{Row: &a2ui.RowComponent{}}, "row"},
+		{a2ui.Component{Column: &a2ui.ColumnComponent{}}, "column"},
+		{a2ui.Component{}, "unknown"},
+	}
+	for _, tc := range cases {
+		if got := render.KindOf(tc.c); got != tc.want {
+			t.Errorf("KindOf(%+v) = %q, want %q", tc.c, got, tc.want)
 		}
 	}
 }

@@ -1,17 +1,18 @@
-// Command hello embeds a tiny A2UI JSON document, hands it to a2tea.Render,
-// and runs the resulting model in a bubbletea program.
+// Command hello embeds a short LLM-style reply that contains an A2UI message,
+// scans it with a2tea, and runs the first rendered surface in a bubbletea
+// program.
 //
-// This exists to prove the public API wires end-to-end. The rendered output
-// is the "[a2tea: card]" placeholder until the renderers are implemented.
+// It mirrors what a host (crush) does: a2tea.Scan splits the reply into text
+// and A2UI messages, and a2tea.Render turns a message's surface into an
+// embeddable model. Here we wrap that model in a2tea.Standalone to run it as a
+// self-contained program (quits on q / Esc / Ctrl+C).
 //
-// The renderer returned by a2tea.Render is an embeddable child component that
-// deliberately does not handle quit, so the example wraps it in
-// a2tea.Standalone, which quits on q / Esc / Ctrl+C.
+// The renderers are still visual stubs, so the surface draws a placeholder tree
+// today; the point is to show the scan → render flow end-to-end.
 package main
 
 import (
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"log"
 
@@ -20,22 +21,31 @@ import (
 	"github.com/joestump-agent/a2tea"
 )
 
-// sampleJSON is the A2UI document rendered by this example. Embedding it makes
-// the program work no matter the caller's cwd — unlike a cwd- or
-// os.Executable-relative file lookup, which fails under `go run` (the binary
-// lives in the build cache) and from any directory other than the repo root.
+// sample is an LLM-style reply: conversational text wrapping an <a2ui-json>
+// block. Embedding it makes the program run from any directory.
 //
-//go:embed sample.json
-var sampleJSON []byte
+//go:embed sample.txt
+var sample string
 
 func main() {
-	model, err := a2tea.Render(json.RawMessage(sampleJSON))
+	parts, err := a2tea.Scan(sample)
 	if err != nil {
-		log.Fatalf("a2tea/examples/hello: render: %v", err)
+		log.Fatalf("a2tea/examples/hello: scan: %v", err)
 	}
 
-	if _, err := tea.NewProgram(a2tea.Standalone(model)).Run(); err != nil {
-		log.Fatalf("a2tea/examples/hello: run: %v", err)
+	for _, p := range parts {
+		if len(p.Messages) == 0 {
+			continue
+		}
+		model, err := a2tea.Render(p.Messages)
+		if err != nil {
+			continue // text-only or non-renderable part
+		}
+		if _, err := tea.NewProgram(a2tea.Standalone(model)).Run(); err != nil {
+			log.Fatalf("a2tea/examples/hello: run: %v", err)
+		}
+		fmt.Println("a2tea/examples/hello: bye")
+		return
 	}
-	fmt.Println("a2tea/examples/hello: bye")
+	log.Fatal("a2tea/examples/hello: no renderable A2UI surface in sample")
 }

@@ -7,6 +7,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.7
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.4
+	github.com/tmc/a2ui v0.0.0-20260605070129-b42a8925e473
 )
 
 require (

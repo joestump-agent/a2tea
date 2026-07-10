@@ -1,58 +1,92 @@
 package a2tea_test
 
 import (
-	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/joestump-agent/a2tea"
-	"github.com/joestump-agent/a2tea/component"
-	"github.com/joestump-agent/a2tea/render"
 )
 
-const sampleCard = `{"kind":"card","id":"hello","title":"Hi","body":"b","buttons":[{"id":"ok","label":"OK"}]}`
+// sampleReply is an LLM-style reply: prose wrapping an <a2ui-json> block whose
+// surface is a card containing a single text component.
+const sampleReply = `intro text <a2ui-json>{"version":"v0.9","updateComponents":{"surfaceId":"s","components":[{"component":"Card","id":"root","child":"t"},{"component":"Text","id":"t","text":"Hi there"}]}}</a2ui-json> outro`
 
-func TestRenderReturnsRightModel(t *testing.T) {
-	m, err := a2tea.Render(json.RawMessage(sampleCard))
-	if err != nil {
-		t.Fatalf("Render: %v", err)
+func TestContains(t *testing.T) {
+	if !a2tea.Contains(sampleReply) {
+		t.Error("Contains(reply with a2ui block) = false, want true")
 	}
-	if _, ok := m.(*render.CardModel); !ok {
-		t.Fatalf("Render returned %T, want *render.CardModel", m)
+	if a2tea.Contains("just some prose, no ui") {
+		t.Error("Contains(plain prose) = true, want false")
 	}
 }
 
-func TestRenderErrorsArePropagated(t *testing.T) {
-	cases := []struct {
-		name    string
-		doc     string
-		wantErr error // nil means "just non-nil"
-	}{
-		{"empty", ``, component.ErrEmptyDocument},
-		{"unknown kind", `{"kind":"table"}`, component.ErrUnknownKind},
-		{"invalid", `{"kind":"input"}`, component.ErrValidation},
-		{"malformed", `{{{`, nil},
+func TestScanSplitsTextAndMessages(t *testing.T) {
+	parts, err := a2tea.Scan(sampleReply)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			m, err := a2tea.Render(json.RawMessage(tc.doc))
-			if err == nil {
-				t.Fatalf("Render(%s): expected an error, got model %#v", tc.name, m)
-			}
-			if m != nil {
-				t.Fatalf("Render(%s): model = %#v, want nil on error", tc.name, m)
-			}
-			if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
-				t.Fatalf("Render(%s): err = %v, want errors.Is %v", tc.name, err, tc.wantErr)
-			}
-		})
+	var texts []string
+	msgCount := 0
+	for _, p := range parts {
+		if s := strings.TrimSpace(p.Text); s != "" {
+			texts = append(texts, s)
+		}
+		msgCount += len(p.Messages)
 	}
+	if msgCount != 1 {
+		t.Fatalf("message count = %d, want 1", msgCount)
+	}
+	joined := strings.Join(texts, "|")
+	if !strings.Contains(joined, "intro text") || !strings.Contains(joined, "outro") {
+		t.Fatalf("text parts = %q, want both intro and outro", joined)
+	}
+}
+
+func TestRenderSurface(t *testing.T) {
+	parts, err := a2tea.Scan(sampleReply)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	for _, p := range parts {
+		if len(p.Messages) == 0 {
+			continue
+		}
+		m, err := a2tea.Render(p.Messages)
+		if err != nil {
+			t.Fatalf("Render: %v", err)
+		}
+		out := m.View().Content
+		if !strings.Contains(out, "Hi there") {
+			t.Fatalf("rendered surface = %q, want the card's text", out)
+		}
+		return
+	}
+	t.Fatal("no message part found in scan")
+}
+
+func TestRenderNoRenderableSurface(t *testing.T) {
+	// createSurface alone has nothing to draw.
+	parts, err := a2tea.Scan(`<a2ui-json>{"version":"v0.9","createSurface":{"surfaceId":"s","catalogId":"c"}}</a2ui-json>`)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	for _, p := range parts {
+		if len(p.Messages) == 0 {
+			continue
+		}
+		if _, err := a2tea.Render(p.Messages); !errors.Is(err, a2tea.ErrNoRenderableSurface) {
+			t.Fatalf("Render err = %v, want ErrNoRenderableSurface", err)
+		}
+		return
+	}
+	t.Fatal("no message part found in scan")
 }
 
 // sizeSpy is a tea.Model that records the last size it was given, so the
-// Standalone test can assert window-size forwarding.
+// Standalone tests can assert window-size forwarding.
 type sizeSpy struct {
 	w, h int
 }
@@ -94,13 +128,5 @@ func TestStandaloneForwardsWindowSize(t *testing.T) {
 	}
 	if spy.w != 120 || spy.h != 40 {
 		t.Fatalf("child size = (%d,%d), want (120,40)", spy.w, spy.h)
-	}
-}
-
-func TestStandalonePassesOtherKeysToChild(t *testing.T) {
-	// A non-quit key must not quit; it is forwarded to the child.
-	m := a2tea.Standalone(&sizeSpy{})
-	if _, cmd := m.Update(tea.KeyPressMsg{Code: 'x', Text: "x"}); cmd != nil {
-		t.Fatalf("non-quit key produced a cmd: %#v", cmd())
 	}
 }

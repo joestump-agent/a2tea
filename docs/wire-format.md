@@ -1,57 +1,46 @@
-# a2tea wire format status
+# a2tea wire format
 
-**Status: provisional / A2UI-inspired. Not yet verified against the a2ui.org
-specification.**
+**a2tea targets the real A2UI protocol (v0.9) via
+[`github.com/tmc/a2ui`](https://pkg.go.dev/github.com/tmc/a2ui).**
 
-This document records what the JSON wire format `a2tea` currently implements,
-how it diverges from the real [A2UI](https://a2ui.org) protocol, and what has
-to happen before the README can claim plain "A2UI compatibility". It exists so
-that anyone building against a2tea — especially the crush integration — knows
-which parts are safe to depend on and which are placeholders.
+Earlier revisions of a2tea used a provisional, invented flat-object shape with a
+`kind` discriminator. That has been removed. a2tea no longer defines its own
+component types — it decodes and renders the actual A2UI message and component
+catalog from `github.com/tmc/a2ui`, and it parses A2UI out of LLM output with
+[`github.com/tmc/a2ui/a2uistream`](https://pkg.go.dev/github.com/tmc/a2ui/a2uistream).
 
-## What is implemented today
+This closes the conformance question that the old `docs/wire-format.md` tracked
+(a2tea issue #5): the wire format is A2UI, not an a2tea invention.
 
-A single, flat JSON object with a `kind` discriminator and inline fields, one
-object per `a2tea.Render` call:
+## What arrives, and how a2tea handles it
 
-```json
-{ "kind": "card", "id": "hello", "title": "Hi", "body": "…", "buttons": [ … ] }
-```
+A2UI is message-oriented. An agent emits a stream of `ServerMessage`s —
+`createSurface`, `updateComponents`, `updateDataModel`, `deleteSurface` —
+usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
 
-Recognized kinds: `card`, `form`, `input`, `choice`, `progress`, `markdown`,
-`stream`. Each maps to one concrete type in the `component` package and one
-stub renderer in `render`.
+- **Parsing.** `a2tea.Contains` / `a2tea.Scan` wrap `a2uistream` to split a
+  reply into ordered `Part`s of text and typed `[]a2ui.ServerMessage`. Hosts
+  call this instead of hand-rolling detection.
+- **Rendering.** `a2tea.Render(msgs)` applies the messages to build surface
+  state and returns an embeddable Bubble Tea model. Components live in a flat
+  set that references children by ID (adjacency list); the renderer resolves the
+  tree from its root (the component nothing else references as a child) and
+  walks it.
 
-## Known divergences from A2UI
+## Implemented vs. not yet
 
-The current shape was **invented** to get the pipeline wired end-to-end. It has
-not been transcribed from a pinned version of the a2ui.org schema, and it
-differs from the real protocol in ways that matter:
+**Implemented**
+- Scan/extract A2UI messages from LLM text (`<a2ui-json>` tags or bare JSON).
+- Render one surface's component tree: `Text` renders its literal, containers
+  (`Card`, `Column`, `Row`, `List`) recurse, `Button` resolves its label.
 
-1. **Message-oriented vs. component-oriented.** A2UI is a stream of messages
-   that create and update *surfaces* over time. a2tea decodes exactly one
-   component per call and has no update-in-place message.
-2. **Nesting vs. adjacency.** A2UI components reference `children` by ID in an
-   adjacency-list style. a2tea has no container kind at all (no column / row /
-   list) and no `children` handling.
-3. **Data binding.** A2UI values can bind to a data model that updates
-   independently of the component tree. a2tea has no data-model concept.
-
-Because of (1)–(3), a document an agent produces for real A2UI will not decode
-here unchanged, and vice versa.
-
-## Decision required (tracked by issue #5)
-
-Before crush consumes this library against the invented shape, the owner needs
-to either:
-
-1. **Target A2UI for real** — pin a specific a2ui.org schema version, vendor or
-   commit-anchor a copy into this `docs/` directory, and redesign
-   `component.Unmarshal` around the spec's message envelope and component
-   catalog (containers, `children`, surfaces, data binding); or
-2. **Scope A2UI out of v0** — keep this provisional shape and describe it
-   honestly as "A2UI-inspired" so downstream expectations are correct.
-
-Until that decision is made and this document names a concrete schema version,
-treat the wire format as unstable. The README's compatibility claim has been
-softened to "A2UI-inspired" to reflect (2) as the current default.
+**Not yet** (tracked as follow-ups; the renderers remain visual stubs)
+- Real per-component rendering with lipgloss/bubbles/glamour instead of the
+  `[a2tea: <kind>]` placeholders for interactive and media components.
+- The data model: `DynamicString` bindings/function calls render as
+  `{binding}` / `{fn}` placeholders; `updateDataModel` is not applied.
+- Surface lifecycle across messages: only the latest `updateComponents` is
+  drawn; `createSurface` theming/catalog, `deleteSurface`, multi-surface
+  compositing, and `ChildList` templates are not handled.
+- The interaction round-trip: A2UI `Action`/`ClientMessage` events are not
+  emitted back to the agent yet.
