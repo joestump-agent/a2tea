@@ -70,17 +70,19 @@ func Scan(s string) ([]Part, error) {
 // does not handle quit. To run one directly, wrap it with Standalone.
 func Render(msgs []a2ui.ServerMessage) (tea.Model, error) {
 	var components []a2ui.Component
+	var surfaceID string
 	found := false
 	for _, m := range msgs {
 		if m.UpdateComponents != nil {
 			components = m.UpdateComponents.Components
+			surfaceID = m.UpdateComponents.SurfaceID
 			found = true
 		}
 	}
 	if !found {
 		return nil, ErrNoRenderableSurface
 	}
-	return render.NewSurface(components), nil
+	return render.NewSurface(surfaceID, components), nil
 }
 
 // Standalone wraps a renderer so it can run as its own tea.Program. It owns the
@@ -104,7 +106,20 @@ type sizer interface {
 	SetSize(width, height int)
 }
 
-func (m standaloneModel) Init() tea.Cmd { return m.child.Init() }
+// focuser is the subset of render.Model that Standalone uses to grant its
+// single child keyboard focus at startup, so Tab/Enter interaction works
+// without a host focus router.
+type focuser interface {
+	Focus() tea.Cmd
+}
+
+func (m standaloneModel) Init() tea.Cmd {
+	cmd := m.child.Init()
+	if f, ok := m.child.(focuser); ok {
+		return tea.Batch(cmd, f.Focus())
+	}
+	return cmd
+}
 
 func (m standaloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {

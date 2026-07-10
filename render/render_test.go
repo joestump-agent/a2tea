@@ -24,7 +24,7 @@ func sampleComponents() []a2ui.Component {
 }
 
 func TestSurfaceRendersTree(t *testing.T) {
-	s := render.NewSurface(sampleComponents())
+	s := render.NewSurface("s", sampleComponents())
 	out := s.View().Content
 
 	// Both text leaves appear, and the column stacks them on separate lines.
@@ -43,7 +43,7 @@ func TestSurfaceRootDetection(t *testing.T) {
 		text("title", "Only Child"),
 		{ID: "root", Card: &a2ui.CardComponent{Child: "title"}},
 	}
-	out := render.NewSurface(comps).View().Content
+	out := render.NewSurface("s", comps).View().Content
 	if !strings.Contains(out, "Only Child") {
 		t.Fatalf("root not resolved to the card: %q", out)
 	}
@@ -58,7 +58,7 @@ func TestSurfaceSharedChildIsNotACycle(t *testing.T) {
 		{ID: "row2", Row: &a2ui.RowComponent{Children: a2ui.ChildList{IDs: []string{"shared"}}}},
 		text("shared", "twice"),
 	}
-	out := render.NewSurface(comps).View().Content
+	out := render.NewSurface("s", comps).View().Content
 	if strings.Contains(out, "cycle") {
 		t.Fatalf("shared child wrongly flagged as a cycle: %q", out)
 	}
@@ -73,14 +73,14 @@ func TestSurfaceGenuineCycleIsCaught(t *testing.T) {
 		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"a"}}}},
 		{ID: "a", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"root"}}}},
 	}
-	out := render.NewSurface(comps).View().Content
+	out := render.NewSurface("s", comps).View().Content
 	if !strings.Contains(out, "cycle") {
 		t.Fatalf("genuine cycle not caught: %q", out)
 	}
 }
 
 func TestSurfaceEmpty(t *testing.T) {
-	out := render.NewSurface(nil).View().Content
+	out := render.NewSurface("s", nil).View().Content
 	if !strings.Contains(out, "empty surface") {
 		t.Fatalf("empty surface = %q, want a placeholder", out)
 	}
@@ -90,7 +90,7 @@ func TestSurfaceMissingChildIsFlagged(t *testing.T) {
 	comps := []a2ui.Component{
 		{ID: "root", Card: &a2ui.CardComponent{Child: "nope"}},
 	}
-	out := render.NewSurface(comps).View().Content
+	out := render.NewSurface("s", comps).View().Content
 	if !strings.Contains(out, "missing component") {
 		t.Fatalf("dangling child ref should be flagged: %q", out)
 	}
