@@ -6,6 +6,14 @@ package render
 // upgrades dependencies can see what this package is supposed to depend on
 // even before the concrete renderers are wired up.
 //
+// Cost to remember: because these are blank imports rather than real uses,
+// every downstream consumer of the render package compiles glamour,
+// bubbles/list, etc. today even if it never renders those kinds. That is
+// harmless for crush (it already depends on all of them) but is exactly why
+// each import below should be dropped the moment its renderer starts using the
+// package directly — leaving them in place forces dead compilation on everyone
+// else.
+//
 // TODO(a2tea): drop these blank imports as the real renderers start using
 // each package directly.
 

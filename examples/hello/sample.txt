@@ -1,0 +1,20 @@
+Here's a little UI to try:
+
+<a2ui-json>
+{
+  "version": "v0.9",
+  "updateComponents": {
+    "surfaceId": "main",
+    "components": [
+      { "component": "Card", "id": "root", "child": "col" },
+      { "component": "Column", "id": "col", "children": ["title", "body", "ok"] },
+      { "component": "Text", "id": "title", "text": "Hello from A2UI" },
+      { "component": "Text", "id": "body", "text": "This surface was described as A2UI JSON and rendered by a2tea." },
+      { "component": "Button", "id": "ok", "action": { "functionCall": { "call": "openUrl", "args": { "url": "https://a2ui.org" }, "returnType": "void" } }, "child": "oklabel" },
+      { "component": "Text", "id": "oklabel", "text": "OK" }
+    ]
+  }
+}
+</a2ui-json>
+
+Press q to quit.
