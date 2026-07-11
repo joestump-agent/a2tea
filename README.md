@@ -16,10 +16,19 @@ define its own component types. It parses A2UI out of model output with
 [`a2uistream`](https://pkg.go.dev/github.com/tmc/a2ui/a2uistream). See
 [`docs/wire-format.md`](docs/wire-format.md).
 
-This repository is early: the parse path and component catalog are the real
-protocol, but the renderers are still visual stubs — a surface's tree is walked
-and text renders literally, while interactive/media components draw a
-`[a2tea: <kind>]` placeholder.
+This repository is early, but rendering is now real for the core catalog:
+`Text` draws with its variant styles (headings, subheadings, captions), `Card`
+gets a rounded border, `Column`/`Row`/`List` lay out their children, `Divider`
+rules, and `Button`s render as styled, focusable chrome. The input components
+(`TextField`, `CheckBox`, `ChoicePicker`, `Slider`, `DateTimeInput`) are
+read-only visuals of their current values; media components (`Image`, `Icon`,
+`Video`, `AudioPlayer`) draw compact one-line placeholders; `Tabs` render their
+title bar plus the first tab's content, and `Modal` renders only its trigger.
+
+Buttons are the first wired interaction: when the host gives a surface focus,
+`Tab` / `Shift+Tab` cycle its buttons and `Enter` emits `event.ButtonClicked`
+with `Source` context. Component chrome is deliberately monochrome — borders,
+bold, faint, and reverse-video focus — so the host's theme wins.
 
 ## Usage
 
@@ -57,7 +66,7 @@ terminal size. A runnable version of the whole flow lives in
 
 - `github.com/joestump-agent/a2tea` — public entry point: `Contains`, `Scan(reply) ([]Part, error)`, `Render(msgs) (tea.Model, error)`, and `Standalone`.
 - `github.com/joestump-agent/a2tea/render` — walks an A2UI surface (components referencing children by ID) into an embeddable `render.Model`.
-- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types a host can consume for interaction results (`ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`), each carrying `Source`. Not emitted yet.
+- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types a host can consume for interaction results (`ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`), each carrying `Source`. `ButtonClicked` is emitted when a focused button is activated; the rest are defined but not emitted yet.
 
 A2UI message and component types come from `github.com/tmc/a2ui`.
 
@@ -71,23 +80,28 @@ run a single surface on its own for examples and manual testing.
 
 ## Roadmap
 
-The renderers are visual stubs. What is **not** yet implemented:
+The core catalog renders for real with `charm.land/lipgloss/v2` (see above).
+What is **not** yet implemented:
 
-- **Real per-component rendering** with `charm.land/lipgloss/v2`,
-  `charm.land/bubbles/v2`, and `charm.land/glamour/v2` instead of the
-  `[a2tea: <kind>]` placeholders.
 - **Data model.** `DynamicString` bindings/function calls render as
   `{binding}` / `{fn}`; `updateDataModel` is not applied.
+- **Editable inputs.** `TextField`/`CheckBox`/`ChoicePicker`/`Slider`/
+  `DateTimeInput` are read-only visuals — they draw current values but never
+  mutate field state or emit input events.
 - **Surface lifecycle.** Only the latest `updateComponents` is drawn;
   `createSurface` theming/catalog, `deleteSurface`, multi-surface compositing,
   and `ChildList` templates are not handled.
-- **Interaction round-trip.** A2UI `Action`/`ClientMessage` events are not yet
-  emitted back to the agent; the `event` types are defined but unused.
+- **Full interaction round-trip.** `event.ButtonClicked` is the only event
+  emitted; `InputSubmitted`/`ChoiceSelected`/`FormSubmitted` are defined but
+  unused, and A2UI `Action`/`ClientMessage` events are not yet sent back to
+  the agent.
+- **Tab switching and modal interaction.** The first tab is always active,
+  and a modal renders only its trigger — its content stays hidden.
 
 ## Versioning
 
-This is pre-1.0 and the public API may change. Once the renderers and event
-round-trip are real and exercised by crush, a `v0.1.0` tag will be cut.
+This is pre-1.0 and the public API may change. Once the event round-trip is
+complete and exercised by crush, a `v0.1.0` tag will be cut.
 
 ## License
 

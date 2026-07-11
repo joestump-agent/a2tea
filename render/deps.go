@@ -18,12 +18,13 @@ package render
 // each package directly.
 
 import (
+	// lipgloss graduated to a real import in styles.go and is no longer
+	// pinned here.
 	_ "charm.land/bubbles/v2/list"
 	_ "charm.land/bubbles/v2/progress"
 	_ "charm.land/bubbles/v2/textinput"
 	_ "charm.land/glamour/v2"
-	_ "charm.land/lipgloss/v2"
-	// TODO(a2tea): bring in huh for FormModel. Skipped at scaffold time
+	// TODO(a2tea): bring in huh for editable-field support. Skipped so far
 	// because the only published version compatible with this dependency
 	// set (charmbracelet/huh v1.0.0) pins old charm.land/x/ansi internals
 	// that conflict with the v2 ecosystem already locked in here. Revisit

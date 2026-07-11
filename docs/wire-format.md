@@ -31,16 +31,31 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
 
 **Implemented**
 - Scan/extract A2UI messages from LLM text (`<a2ui-json>` tags or bare JSON).
-- Render one surface's component tree: `Text` renders its literal, containers
-  (`Card`, `Column`, `Row`, `List`) recurse, `Button` resolves its label.
+- Real lipgloss rendering of one surface's component tree, core catalog first:
+  `Text` with its variant styles (h1–h3 heading, h4–h5 subheading, caption),
+  `Card` in a rounded border, `Column`/`Row`/`List` layout, `Divider`, and
+  styled focusable `Button`s.
+- Read-only visuals for the input components: `TextField`, `CheckBox`,
+  `ChoicePicker`, `Slider`, and `DateTimeInput` draw their current values.
+- Compact placeholders for media (`Image`, `Icon`, `Video`, `AudioPlayer`);
+  `Tabs` render their title bar plus the first tab's content; `Modal` renders
+  only its trigger.
+- The first wired event: when the host focuses a surface, `Tab` / `Shift+Tab`
+  cycle its buttons and `Enter` emits `event.ButtonClicked` carrying `Source`
+  (component + surface IDs).
+- Deliberately monochrome chrome (borders, bold, faint, reverse-video focus)
+  so the host theme wins.
 
-**Not yet** (tracked as follow-ups; the renderers remain visual stubs)
-- Real per-component rendering with lipgloss/bubbles/glamour instead of the
-  `[a2tea: <kind>]` placeholders for interactive and media components.
+**Not yet** (tracked as follow-ups)
 - The data model: `DynamicString` bindings/function calls render as
   `{binding}` / `{fn}` placeholders; `updateDataModel` is not applied.
+- Editable inputs: the field renderers never mutate state or emit input
+  events.
 - Surface lifecycle across messages: only the latest `updateComponents` is
   drawn; `createSurface` theming/catalog, `deleteSurface`, multi-surface
   compositing, and `ChildList` templates are not handled.
-- The interaction round-trip: A2UI `Action`/`ClientMessage` events are not
-  emitted back to the agent yet.
+- The rest of the interaction round-trip: `event.ButtonClicked` is the only
+  event emitted; A2UI `Action`/`ClientMessage` events are not sent back to
+  the agent yet.
+- Tab switching (the first tab is always active) and modal interaction (a
+  modal's content stays hidden).

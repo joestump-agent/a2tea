@@ -4,8 +4,8 @@
 // them up from there.
 //
 // Status. These types predate a2tea's adoption of the real A2UI protocol
-// (github.com/tmc/a2ui) and no renderer emits them yet — the renderers are
-// still visual stubs. They are a provisional host-facing vocabulary and will
+// (github.com/tmc/a2ui). ButtonClicked is emitted by the surface renderer;
+// the rest are not emitted yet. They are a provisional host-facing vocabulary and will
 // be re-grounded in A2UI catalog terms when the interaction round-trip is
 // built: A2UI models interactions as a Button's Action / a ClientMessage, has
 // TextField (not "input") and ChoicePicker (not "choice"), and has no Form
@@ -32,10 +32,13 @@ type Source struct {
 	SurfaceID string
 }
 
-// ButtonClicked is emitted when the user activates an A2UI Button.
+// ButtonClicked is emitted when the user activates an A2UI Button: with the
+// surface focused, Tab / Shift+Tab cycle buttons and Enter dispatches this
+// event with Source set. It is the first (and so far only) event a renderer
+// emits.
 //
-// TODO(a2tea): dispatch this from the renderer with Source set; map it to the
-// button's A2UI Action.
+// TODO(a2tea): map the click to the button's A2UI Action so it can round-trip
+// to the agent as a ClientMessage.
 type ButtonClicked struct {
 	Source
 	// ID is the a2ui.Component ID of the activated Button.
