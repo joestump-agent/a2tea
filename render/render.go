@@ -125,9 +125,13 @@ func (s *Surface) isFocused(id string) bool {
 }
 
 // collectFocusables walks the tree from the root and returns the IDs of
-// interactive components (buttons) in depth-first order.
+// interactive components (buttons) in depth-first order. A component
+// referenced by more than one parent (legal adjacency-list reuse) is
+// collected once — it is one interactive element however many times it is
+// drawn.
 func (s *Surface) collectFocusables() []string {
 	var out []string
+	collected := map[string]bool{}
 	var walk func(id string, seen map[string]bool)
 	walk = func(id string, seen map[string]bool) {
 		if seen[id] {
@@ -139,7 +143,8 @@ func (s *Surface) collectFocusables() []string {
 		if !ok {
 			return
 		}
-		if c.Button != nil {
+		if c.Button != nil && !collected[c.ID] {
+			collected[c.ID] = true
 			out = append(out, c.ID)
 		}
 		for _, child := range childIDs(c) {

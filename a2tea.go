@@ -8,8 +8,11 @@
 // text and the typed A2UI messages, using the real A2UI wire format
 // (github.com/tmc/a2ui): JSON wrapped in <a2ui-json> tags or bare A2UI JSON.
 //
-// The renderers are still visual stubs (see the render package), but the parse
-// path and the component catalog are the real A2UI v0.9 protocol.
+// Rendering is real for the core catalog (see the render package): styled
+// text, bordered cards, container layout, and focusable buttons that emit
+// event.ButtonClicked. The remaining gaps — data-model bindings, editable
+// inputs, surface lifecycle — are listed in the render package doc and
+// docs/wire-format.md.
 package a2tea
 
 import (

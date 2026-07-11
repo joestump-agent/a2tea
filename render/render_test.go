@@ -260,3 +260,40 @@ func TestKindOf(t *testing.T) {
 		}
 	}
 }
+
+// TestFocusablesDedupSharedButton pins that a button referenced by two
+// parents (legal adjacency-list reuse) occupies one slot in the focus ring,
+// not two — Tab must not visit the same interactive element twice.
+func TestFocusablesDedupSharedButton(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"r1", "r2", "other"}}}},
+		{ID: "r1", Row: &a2ui.RowComponent{Children: a2ui.ChildList{IDs: []string{"shared-btn"}}}},
+		{ID: "r2", Row: &a2ui.RowComponent{Children: a2ui.ChildList{IDs: []string{"shared-btn"}}}},
+		{ID: "shared-btn", Button: &a2ui.ButtonComponent{Child: "lbl"}},
+		{ID: "other", Button: &a2ui.ButtonComponent{Child: "lbl2"}},
+		text("lbl", "Go"),
+		text("lbl2", "Stop"),
+	}
+	s := render.NewSurface("s", comps)
+	s.Focus()
+
+	// Tab through the ring: with dedup there are exactly two stops, so two
+	// tabs return to the start. Activate and check we land on each button
+	// exactly once per cycle.
+	seen := map[string]int{}
+	for i := 0; i < 2; i++ {
+		_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		if cmd == nil {
+			t.Fatal("enter on focused surface returned no cmd")
+		}
+		click, ok := cmd().(event.ButtonClicked)
+		if !ok {
+			t.Fatalf("cmd yielded %T, want event.ButtonClicked", cmd())
+		}
+		seen[click.ID]++
+		s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	}
+	if seen["shared-btn"] != 1 || seen["other"] != 1 {
+		t.Fatalf("focus ring should visit each button once per cycle, got %v", seen)
+	}
+}
