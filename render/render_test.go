@@ -87,6 +87,32 @@ func TestSurfaceSharedChildIsNotACycle(t *testing.T) {
 	}
 }
 
+// TestSurfaceSharedChildStillCatchesGenuineCycle ensures the path-scoped
+// guard does not weaken cycle detection: a component referenced by two
+// parents must still be caught when one of those parents is its own
+// descendant (a real ancestor loop).
+func TestSurfaceSharedChildStillCatchesGenuineCycle(t *testing.T) {
+	// root -> a -> loop (ancestor cycle through "loop")
+	// root -> b -> shared (harmless reuse)
+	// "shared" appears under two parents but is not in a cycle; "loop"
+	// is its own ancestor and must be flagged.
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"a", "b"}}}},
+		{ID: "a", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"loop"}}}},
+		{ID: "loop", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"a"}}}},
+		{ID: "b", Row: &a2ui.RowComponent{Children: a2ui.ChildList{IDs: []string{"shared"}}}},
+		text("shared", "ok"),
+	}
+	out := renderPlain(comps)
+	if !strings.Contains(out, "cycle") {
+		t.Fatalf("genuine ancestor cycle not caught: %q", out)
+	}
+	// The shared (non-cyclic) child must still render normally.
+	if !strings.Contains(out, "ok") {
+		t.Fatalf("non-cyclic shared child should still render: %q", out)
+	}
+}
+
 func TestSurfaceGenuineCycleIsCaught(t *testing.T) {
 	// root -> a -> root is a real ancestor loop and must still be caught.
 	comps := []a2ui.Component{
