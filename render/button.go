@@ -24,8 +24,9 @@ import (
 // The producer-side fix (crush#47) repairs childless buttons host-side so the
 // real label survives; this fallback is defense-in-depth.
 //
-// The button's Action is not rendered; Surface.Update emits
-// event.ButtonClicked when the focused button is activated.
+// The button's Action is not rendered; Surface.activate reads it on Enter and
+// emits both event.ButtonClicked and a protocol-native a2ui.ClientMessage (see
+// render.go).
 func (s *Surface) renderButton(c a2ui.Component, seen map[string]bool) string {
 	var label string
 	if c.Button.Child != "" {

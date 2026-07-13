@@ -197,6 +197,136 @@ func TestButtonFocusCycleAndActivate(t *testing.T) {
 	}
 }
 
+// collectMsgs executes a cmd (which may be a single cmd or a tea.Batch) and
+// returns all messages it produces. For a Batch, it iterates BatchMsg's
+// sub-cmds and calls each one.
+func collectMsgs(t *testing.T, cmd tea.Cmd) []tea.Msg {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		msgs := make([]tea.Msg, 0, len(batch))
+		for _, c := range batch {
+			msgs = append(msgs, c())
+		}
+		return msgs
+	}
+	return []tea.Msg{msg}
+}
+
+// findMsg returns the first message of type T in msgs, or t.Fatals if none.
+func findMsg[T any](t *testing.T, msgs []tea.Msg) T {
+	t.Helper()
+	for _, m := range msgs {
+		if v, ok := m.(T); ok {
+			return v
+		}
+	}
+	t.Fatalf("no %T in %d messages", *new(T), len(msgs))
+	return *new(T)
+}
+
+// hasMsg reports whether any message in msgs is of type T.
+func hasMsg[T any](msgs []tea.Msg) bool {
+	for _, m := range msgs {
+		if _, ok := m.(T); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// TestButtonActivationEmitsActionEvent verifies that activating a focused
+// button with a server-side Action.Event emits both event.ButtonClicked
+// (carrying the resolved *a2ui.EventAction) and a protocol-native
+// a2ui.ClientMessage whose ActionEvent has the right Name and source IDs.
+func TestButtonActivationEmitsActionEvent(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"btn"}}}},
+		{ID: "btn", Button: &a2ui.ButtonComponent{
+			Child: "lbl",
+			Action: a2ui.Action{Event: &a2ui.EventAction{
+				Name: "setProvider",
+			}},
+		}},
+		text("lbl", "Set Provider"),
+	}
+	s := render.NewSurface("surf", comps)
+	s.Focus()
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	msgs := collectMsgs(t, cmd)
+
+	// event.ButtonClicked carries the resolved Action.
+	clicked := findMsg[event.ButtonClicked](t, msgs)
+	if clicked.ID != "btn" || clicked.ComponentID != "btn" || clicked.SurfaceID != "surf" {
+		t.Fatalf("ButtonClicked = %+v, want ID/ComponentID btn on surf", clicked)
+	}
+	if clicked.Action == nil || clicked.Action.Name != "setProvider" {
+		t.Fatalf("ButtonClicked.Action = %+v, want Name setProvider", clicked.Action)
+	}
+
+	// a2ui.ClientMessage carries the protocol-native ActionEvent.
+	cm := findMsg[a2ui.ClientMessage](t, msgs)
+	if cm.Action == nil {
+		t.Fatal("ClientMessage.Action is nil")
+	}
+	if cm.Action.Name != "setProvider" {
+		t.Fatalf("ActionEvent.Name = %q, want setProvider", cm.Action.Name)
+	}
+	if cm.Action.SurfaceID != "surf" {
+		t.Fatalf("ActionEvent.SurfaceID = %q, want surf", cm.Action.SurfaceID)
+	}
+	if cm.Action.SourceComponentID != "btn" {
+		t.Fatalf("ActionEvent.SourceComponentID = %q, want btn", cm.Action.SourceComponentID)
+	}
+	if cm.Version != a2ui.Version {
+		t.Fatalf("ClientMessage.Version = %q, want %s", cm.Version, a2ui.Version)
+	}
+	// Timestamp is left empty for the host to stamp (documented choice).
+	if cm.Action.Timestamp != "" {
+		t.Fatalf("ActionEvent.Timestamp = %q, want empty (host stamps it)", cm.Action.Timestamp)
+	}
+}
+
+// TestButtonActivationFunctionCallNoClientMessage verifies that a button
+// whose Action is a FunctionCall (client-side fn, no server event) emits
+// event.ButtonClicked with a nil Action but does NOT produce a spurious
+// a2ui.ClientMessage.
+func TestButtonActivationFunctionCallNoClientMessage(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"btn"}}}},
+		{ID: "btn", Button: &a2ui.ButtonComponent{
+			Child: "lbl",
+			Action: a2ui.Action{FunctionCall: &a2ui.FunctionCall{
+				Call: "openUrl",
+			}},
+		}},
+		text("lbl", "Open"),
+	}
+	s := render.NewSurface("surf", comps)
+	s.Focus()
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	msgs := collectMsgs(t, cmd)
+
+	// ButtonClicked is emitted with nil Action (no server event).
+	clicked := findMsg[event.ButtonClicked](t, msgs)
+	if clicked.ID != "btn" {
+		t.Fatalf("ButtonClicked.ID = %q, want btn", clicked.ID)
+	}
+	if clicked.Action != nil {
+		t.Fatalf("ButtonClicked.Action = %+v, want nil for FunctionCall-only button", clicked.Action)
+	}
+
+	// No ClientMessage should be produced for a client-side function call.
+	if hasMsg[a2ui.ClientMessage](msgs) {
+		t.Fatal("FunctionCall-only button should not emit a ClientMessage")
+	}
+}
+
 func TestDividerRendersRule(t *testing.T) {
 	comps := []a2ui.Component{
 		{ID: "d", Divider: &a2ui.DividerComponent{}},
