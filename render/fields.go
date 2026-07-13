@@ -44,12 +44,12 @@ func (s *Surface) renderTextField(c a2ui.Component) string {
 	tf := c.TextField
 	value := ""
 	if tf.Value != nil {
-		value = dynString(*tf.Value)
+		value = s.dynString(*tf.Value)
 	}
 	if value == "" {
 		value = styleCaption.Render("(empty)")
 	}
-	return wrapTo(labeled(dynString(tf.Label), "▏"+value), s.width)
+	return wrapTo(labeled(s.dynString(tf.Label), "▏"+value), s.width)
 }
 
 // renderCheckBox renders a CheckBox as "[x] label" when the value's literal
@@ -61,7 +61,7 @@ func (s *Surface) renderCheckBox(c a2ui.Component) string {
 	if cb.Value.Literal != nil && *cb.Value.Literal {
 		box = "[x]"
 	}
-	line := box + " " + dynString(cb.Label)
+	line := box + " " + s.dynString(cb.Label)
 	switch {
 	case cb.Value.Binding != nil:
 		line += " " + styleCaption.Render("{binding}")
@@ -86,7 +86,7 @@ func (s *Surface) renderChoicePicker(c a2ui.Component) string {
 	}
 	lines := make([]string, 0, len(cp.Options)+1)
 	if cp.Label != nil {
-		if label := dynString(*cp.Label); label != "" {
+		if label := s.dynString(*cp.Label); label != "" {
 			lines = append(lines, styleCaption.Render(label))
 		}
 	}
@@ -100,7 +100,7 @@ func (s *Surface) renderChoicePicker(c a2ui.Component) string {
 		case selected[opt.Value]:
 			mark = "(•)"
 		}
-		text := dynString(opt.Label)
+		text := s.dynString(opt.Label)
 		if text == "" {
 			text = opt.Value
 		}
@@ -139,7 +139,7 @@ func (s *Surface) renderSlider(c a2ui.Component) string {
 	}
 	label := ""
 	if sl.Label != nil {
-		label = dynString(*sl.Label)
+		label = s.dynString(*sl.Label)
 	}
 	return wrapTo(labeled(label, body), s.width)
 }
@@ -149,13 +149,13 @@ func (s *Surface) renderSlider(c a2ui.Component) string {
 // EnableDate/EnableTime and the Min/Max bounds are not rendered.
 func (s *Surface) renderDateTimeInput(c a2ui.Component) string {
 	dt := c.DateTimeInput
-	value := dynString(dt.Value)
+	value := s.dynString(dt.Value)
 	if value == "" {
 		value = styleCaption.Render("(unset)")
 	}
 	label := ""
 	if dt.Label != nil {
-		label = dynString(*dt.Label)
+		label = s.dynString(*dt.Label)
 	}
 	return wrapTo(labeled(label, value), s.width)
 }

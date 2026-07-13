@@ -63,29 +63,45 @@ func Scan(s string) ([]Part, error) {
 
 // Render applies a sequence of A2UI server messages in order to build surface
 // state and returns an embeddable Bubble Tea model that draws the resulting
-// surface. The latest updateComponents wins; surface compositing, data-model
-// updates, and deletions are not yet applied (see the render package).
+// surface. Messages are composited: updateComponents merges components by ID
+// (an update to one component leaves siblings intact), updateDataModel sets
+// bound values that resolve on the next render, and deleteSurface removes the
+// targeted surface.
 //
-// It returns ErrNoRenderableSurface when the messages describe no components to
-// draw, so a host can fall back to plain text.
+// It returns ErrNoRenderableSurface when the messages describe no components
+// to draw (or when the surface was deleted), so a host can fall back to
+// plain text.
 //
 // The returned model is a render.Model — an embeddable child component that
 // does not handle quit. To run one directly, wrap it with Standalone.
 func Render(msgs []a2ui.ServerMessage) (tea.Model, error) {
-	var components []a2ui.Component
 	var surfaceID string
+	var firstComponents []a2ui.Component
 	found := false
+
+	// Find the first updateComponents to establish the surface.
 	for _, m := range msgs {
 		if m.UpdateComponents != nil {
-			components = m.UpdateComponents.Components
 			surfaceID = m.UpdateComponents.SurfaceID
+			firstComponents = m.UpdateComponents.Components
 			found = true
+			break
 		}
 	}
+
 	if !found {
 		return nil, ErrNoRenderableSurface
 	}
-	return render.NewSurface(surfaceID, components), nil
+
+	s := render.NewSurface(surfaceID, firstComponents)
+
+	// Apply all subsequent messages (including further updateComponents for
+	// compositing, data-model updates, and deleteSurface).
+	alive := s.Apply(msgs)
+	if !alive {
+		return nil, ErrNoRenderableSurface
+	}
+	return s, nil
 }
 
 // Standalone wraps a renderer so it can run as its own tea.Program. It owns the

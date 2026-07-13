@@ -61,6 +61,10 @@ type Surface struct {
 	byID   map[string]a2ui.Component
 	rootID string
 
+	// data holds resolved data-model values keyed by path, used to resolve
+	// bound DynamicString/Value components at render time.
+	data map[string]any
+
 	// focusables are the IDs of interactive components (buttons) in
 	// depth-first tree order; focusIdx points at the one holding focus.
 	focusables []string
@@ -325,13 +329,22 @@ func (s *Surface) renderChildren(cl a2ui.ChildList, seen map[string]bool) []stri
 }
 
 // dynString extracts a display string from a DynamicString: the literal when
-// present, otherwise a placeholder marking a binding/function the data model
-// would resolve (not wired yet).
-func dynString(d a2ui.DynamicString) string {
+// present, the resolved data-model value when bound, otherwise a placeholder
+// marking an unresolved binding or function call.
+func (s *Surface) dynString(d a2ui.DynamicString) string {
 	switch {
 	case d.Literal != nil:
 		return *d.Literal
 	case d.Binding != nil:
+		if s.data != nil {
+			key := strings.TrimPrefix(d.Binding.Path, "/")
+			if v, ok := s.data[key]; ok {
+				if str, ok := v.(string); ok {
+					return str
+				}
+				return fmt.Sprintf("%v", v)
+			}
+		}
 		return "{binding}"
 	case d.FunctionCall != nil:
 		return "{fn}"
