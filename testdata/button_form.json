@@ -1,0 +1,12 @@
+{
+  "version": "v0.9",
+  "updateComponents": {
+    "surfaceId": "test",
+    "components": [
+      {"component": "Card", "id": "root", "child": "col"},
+      {"component": "Column", "id": "col", "children": ["btn1", "btn2"]},
+      {"component": "Button", "id": "btn1", "text": "Send"},
+      {"component": "Button", "id": "btn2", "text": "Cancel"}
+    ]
+  }
+}
