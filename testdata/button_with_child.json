@@ -1,0 +1,15 @@
+{
+  "version": "v0.9",
+  "updateComponents": {
+    "surfaceId": "test",
+    "components": [
+      {"component": "Card", "id": "root", "child": "col"},
+      {"component": "Column", "id": "col", "children": ["title", "btn1", "btn2"]},
+      {"component": "Text", "id": "title", "text": "Pick one:"},
+      {"component": "Button", "id": "btn1", "child": "lbl1"},
+      {"component": "Text", "id": "lbl1", "text": "Send"},
+      {"component": "Button", "id": "btn2", "child": "lbl2"},
+      {"component": "Text", "id": "lbl2", "text": "Cancel"}
+    ]
+  }
+}
