@@ -16,11 +16,14 @@
 // don't re-derive them. They return (zero, false) on a missing key or type
 // mismatch — never panicking.
 //
-// The intended flow pairs with the renderer's emitted message:
+// The intended flow pairs with the renderer's emitted message. Activating a
+// Button with a server-side event emits an [a2ui.ClientMessage] as its own
+// tea.Msg (alongside the host-facing event.ButtonClicked); the host matches
+// it in Update and dispatches its Action:
 //
-//	ev := event.ButtonClicked // from Surface.Update
-//	if ev.ClientMessage.Action == nil { return } // FunctionCall-only button
-//	cmd, err := d.Dispatch(*ev.ClientMessage.Action)
+//	case a2ui.ClientMessage: // from Surface.Update's batch
+//		if msg.Action == nil { return } // FunctionCall-only button
+//		cmd, err := d.Dispatch(*msg.Action)
 //
 // [Handler] bodies are entirely host-owned. The library performs no host
 // operations; it provides the routing shell and typed accessors only.
