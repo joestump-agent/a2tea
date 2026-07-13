@@ -165,6 +165,16 @@ func (s *Surface) activate() tea.Cmd {
 		return func() tea.Msg { return clicked }
 	}
 
+	// Gather the ActionEvent.Context: the surface's input component values,
+	// then the action's own declared context bindings (which override field
+	// values on key collision — the producer's explicit intent wins).
+	ctx := s.gatherFieldValues()
+	for k, dv := range ea.Context {
+		if v := resolveDynamicValue(dv); v != nil {
+			ctx[k] = v
+		}
+	}
+
 	// Emit both the host-facing event and the protocol-native ClientMessage.
 	cm := a2ui.ClientMessage{
 		Version: a2ui.Version,
@@ -172,6 +182,7 @@ func (s *Surface) activate() tea.Cmd {
 			Name:              ea.Name,
 			SurfaceID:         s.id,
 			SourceComponentID: id,
+			Context:           ctx,
 		},
 	}
 	return tea.Batch(

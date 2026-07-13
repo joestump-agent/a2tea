@@ -5,12 +5,18 @@
 //
 // Status. ButtonClicked is emitted by the surface renderer and now carries the
 // button's resolved *a2ui.EventAction (nil for buttons with no server event).
-// The remaining types are not emitted yet. They are a provisional host-facing
-// vocabulary and will be re-grounded in A2UI catalog terms when the
-// interaction round-trip is built: A2UI models interactions as a Button's
-// Action / a ClientMessage, has TextField (not "input") and ChoicePicker (not
-// "choice"), and has no Form component at all (see the note on FormSubmitted).
-// Treat the shapes here as not yet stable.
+// Alongside it the renderer emits a native a2ui.ClientMessage whose
+// ActionEvent.Context is populated from the surface's input component values
+// (TextField → string, ChoicePicker → []string, CheckBox → bool, keyed by
+// component ID) merged with the action's own declared context bindings.
+//
+// FormSubmitted is deprecated: A2UI v0.9 has no Form component, so a "form
+// submit" is just a Button Action whose ActionEvent.Context carries the
+// gathered field values — the host reads Context directly. InputSubmitted and
+// ChoiceSelected are not emitted yet; they are a provisional host-facing
+// vocabulary that will be re-grounded in A2UI catalog terms (TextField, not
+// "input"; ChoicePicker, not "choice") when wired. Treat those shapes as not
+// yet stable.
 //
 // Source context. Every event embeds Source, which carries the IDs a consumer
 // needs to tell interactions apart when more than one component (or the same
@@ -79,17 +85,11 @@ type ChoiceSelected struct {
 	Value string
 }
 
-// FormSubmitted is emitted once when the user submits a group of fields as a
-// unit, carrying every field's value keyed by field ID — so a consumer gets one
-// atomic, correlated event instead of collecting N loose InputSubmitted
-// messages and correlating them to a single submit action.
-//
-// Note: A2UI v0.9 has no Form component. A "form submit" corresponds to a
-// Button Action gathering the values of nearby TextField/ChoicePicker
-// components; this type will be re-grounded on that shape when wired.
-//
-// TODO(a2tea): dispatch this from the renderer on the submitting Button's
-// Action.
+// Deprecated: A2UI v0.9 has no Form component. A "form submit" is a Button
+// Action whose emitted a2ui.ClientMessage carries the gathered field values in
+// ActionEvent.Context (TextField/ChoicePicker/CheckBox, keyed by component ID);
+// the host reads ActionEvent.Context directly — see ButtonClicked. This type
+// is retained for backward compatibility but is never emitted by the renderer.
 type FormSubmitted struct {
 	Source
 	// FormID identifies the submitted group (mirrored in Source.ComponentID;
