@@ -57,10 +57,9 @@ type Model interface {
 // message, walked as a tree starting from its root.
 type Surface struct {
 	base
-	id      string
-	version string // A2UI protocol version stamped on emitted ClientMessages
-	byID    map[string]a2ui.Component
-	rootID  string
+	id     string
+	byID   map[string]a2ui.Component
+	rootID string
 
 	// focusables are the IDs of interactive components (buttons) in
 	// depth-first tree order; focusIdx points at the one holding focus.
@@ -74,17 +73,11 @@ type Surface struct {
 // surfaceID is the A2UI surfaceId the components belong to; it is carried on
 // the events the surface emits.
 func NewSurface(surfaceID string, components []a2ui.Component) *Surface {
-	return NewSurfaceWithVersion(surfaceID, a2ui.Version, components)
-}
-
-// NewSurfaceWithVersion is like NewSurface but lets the caller supply the A2UI
-// protocol version that will be stamped on emitted a2ui.ClientMessage values.
-func NewSurfaceWithVersion(surfaceID, version string, components []a2ui.Component) *Surface {
 	byID := make(map[string]a2ui.Component, len(components))
 	for _, c := range components {
 		byID[c.ID] = c
 	}
-	s := &Surface{id: surfaceID, version: version, byID: byID, rootID: rootID(components)}
+	s := &Surface{id: surfaceID, byID: byID, rootID: rootID(components)}
 	s.focusables = s.collectFocusables()
 	return s
 }
@@ -174,7 +167,7 @@ func (s *Surface) activate() tea.Cmd {
 
 	// Emit both the host-facing event and the protocol-native ClientMessage.
 	cm := a2ui.ClientMessage{
-		Version: s.version,
+		Version: a2ui.Version,
 		Action: &a2ui.ActionEvent{
 			Name:              ea.Name,
 			SurfaceID:         s.id,
