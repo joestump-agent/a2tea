@@ -41,8 +41,12 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `Tabs` render their title bar plus the first tab's content; `Modal` renders
   only its trigger.
 - The first wired event: when the host focuses a surface, `Tab` / `Shift+Tab`
-  cycle its buttons and `Enter` emits `event.ButtonClicked` carrying `Source`
-  (component + surface IDs).
+  cycle its buttons and `Enter` activates the focused button. Activation emits
+  `event.ButtonClicked` (carrying the resolved `*a2ui.EventAction`) and, when
+  the button has a server-side `Action.Event`, a protocol-native
+  `a2ui.ClientMessage` whose `ActionEvent` carries `Name`, `SurfaceID`, and
+  `SourceComponentID`. `FunctionCall`-only buttons emit no `ClientMessage`.
+  The `ActionEvent.Timestamp` is left empty for the host to stamp.
 - Deliberately monochrome chrome (borders, bold, faint, reverse-video focus)
   so the host theme wins.
 
@@ -54,8 +58,10 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
 - Surface lifecycle across messages: only the latest `updateComponents` is
   drawn; `createSurface` theming/catalog, `deleteSurface`, multi-surface
   compositing, and `ChildList` templates are not handled.
-- The rest of the interaction round-trip: `event.ButtonClicked` is the only
-  event emitted; A2UI `Action`/`ClientMessage` events are not sent back to
-  the agent yet.
+- The rest of the interaction round-trip: button activation now emits an
+  `a2ui.ClientMessage` with the `ActionEvent`, but the `ActionEvent.Context`
+  (gathering field values) is not populated yet (#20). The other event types
+  (`InputSubmitted`/`ChoiceSelected`/`FormSubmitted`) are defined but not
+  emitted.
 - Tab switching (the first tab is always active) and modal interaction (a
   modal's content stays hidden).

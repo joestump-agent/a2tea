@@ -10,8 +10,12 @@
 // model lands.
 //
 // Interaction: Buttons are focusable. When the host grants the surface focus,
-// Tab / Shift+Tab cycle the buttons and Enter emits event.ButtonClicked as a
-// tea.Msg. Editing input components is not wired yet.
+// Tab / Shift+Tab cycle the buttons and Enter activates the focused button.
+// Activation emits event.ButtonClicked (carrying the resolved *a2ui.EventAction)
+// and, when the button has a server-side Event action, a protocol-native
+// a2ui.ClientMessage whose ActionEvent carries Name, SurfaceID, and
+// SourceComponentID. FunctionCall-only buttons emit no ClientMessage. Editing
+// input components is not wired yet.
 //
 // Composition contract. A renderer is designed to be embedded as a child of a
 // larger TUI (crush), not to be the root of its own program:
@@ -53,9 +57,10 @@ type Model interface {
 // message, walked as a tree starting from its root.
 type Surface struct {
 	base
-	id     string
-	byID   map[string]a2ui.Component
-	rootID string
+	id      string
+	version string // A2UI protocol version stamped on emitted ClientMessages
+	byID    map[string]a2ui.Component
+	rootID  string
 
 	// focusables are the IDs of interactive components (buttons) in
 	// depth-first tree order; focusIdx points at the one holding focus.
@@ -69,11 +74,17 @@ type Surface struct {
 // surfaceID is the A2UI surfaceId the components belong to; it is carried on
 // the events the surface emits.
 func NewSurface(surfaceID string, components []a2ui.Component) *Surface {
+	return NewSurfaceWithVersion(surfaceID, a2ui.Version, components)
+}
+
+// NewSurfaceWithVersion is like NewSurface but lets the caller supply the A2UI
+// protocol version that will be stamped on emitted a2ui.ClientMessage values.
+func NewSurfaceWithVersion(surfaceID, version string, components []a2ui.Component) *Surface {
 	byID := make(map[string]a2ui.Component, len(components))
 	for _, c := range components {
 		byID[c.ID] = c
 	}
-	s := &Surface{id: surfaceID, byID: byID, rootID: rootID(components)}
+	s := &Surface{id: surfaceID, version: version, byID: byID, rootID: rootID(components)}
 	s.focusables = s.collectFocusables()
 	return s
 }
@@ -82,9 +93,23 @@ func NewSurface(surfaceID string, components []a2ui.Component) *Surface {
 func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
-// cycle button focus and Enter activates the focused button, emitting
-// event.ButtonClicked. Per the composition contract it never quits — the host
-// owns program exit.
+// cycle button focus and Enter activates the focused button. Activation emits
+// two messages via tea.Batch:
+//
+//   - event.ButtonClicked — the host-facing convenience event, now carrying
+//     the button's resolved *a2ui.EventAction (nil for buttons with no server
+//     event).
+//   - a2ui.ClientMessage — the protocol-native round-trip message whose
+//     ActionEvent carries Name, SurfaceID, and SourceComponentID. This is only
+//     emitted when the button has a server-side Event action; a FunctionCall-
+//     only button produces no ClientMessage (client-side functions are handled
+//     by the host, not round-tripped to the agent).
+//
+// The ActionEvent.Timestamp is left empty for the host to stamp. Calling
+// time.Now here would make Update non-deterministic and break golden tests.
+//
+// Per the composition contract the surface never quits — the host owns program
+// exit.
 func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !s.Focused() || len(s.focusables) == 0 {
 		return s, nil
@@ -99,15 +124,67 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		s.focusIdx = (s.focusIdx - 1 + len(s.focusables)) % len(s.focusables)
 	case "enter":
-		id := s.focusables[s.focusIdx]
-		return s, func() tea.Msg {
+		return s, s.activate()
+	}
+	return s, nil
+}
+
+// activate dispatches the activation messages for the focused button. It
+// resolves the focused button's a2ui.Component from the surface's component
+// map, reads its Action, and emits:
+//
+//   - event.ButtonClicked (always) — enriched with the resolved
+//     *a2ui.EventAction, nil for buttons with no server event.
+//   - a2ui.ClientMessage (only when Action.Event is non-nil) — the
+//     protocol-native round-trip message whose ActionEvent carries Name,
+//     SurfaceID, and SourceComponentID. A FunctionCall-only button produces
+//     no ClientMessage; client-side functions are handled by the host, not
+//     round-tripped to the agent.
+//
+// ActionEvent.Timestamp is left empty — the host stamps it before sending.
+// Calling time.Now here would make Update non-deterministic.
+func (s *Surface) activate() tea.Cmd {
+	id := s.focusables[s.focusIdx]
+	c, ok := s.byID[id]
+	if !ok || c.Button == nil {
+		return func() tea.Msg {
 			return event.ButtonClicked{
 				Source: event.Source{ComponentID: id, SurfaceID: s.id},
 				ID:     id,
 			}
 		}
 	}
-	return s, nil
+
+	// Resolve the server-side event action, if any.
+	var ea *a2ui.EventAction
+	if c.Button.Action.Event != nil {
+		ea = c.Button.Action.Event
+	}
+
+	clicked := event.ButtonClicked{
+		Source: event.Source{ComponentID: id, SurfaceID: s.id},
+		ID:     id,
+		Action: ea,
+	}
+
+	// FunctionCall-only buttons have no server event to round-trip.
+	if ea == nil {
+		return func() tea.Msg { return clicked }
+	}
+
+	// Emit both the host-facing event and the protocol-native ClientMessage.
+	cm := a2ui.ClientMessage{
+		Version: s.version,
+		Action: &a2ui.ActionEvent{
+			Name:              ea.Name,
+			SurfaceID:         s.id,
+			SourceComponentID: id,
+		},
+	}
+	return tea.Batch(
+		func() tea.Msg { return clicked },
+		func() tea.Msg { return cm },
+	)
 }
 
 // View implements tea.Model.
