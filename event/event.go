@@ -3,14 +3,16 @@
 // through the standard bubbletea Update loop, and the consuming agent picks
 // them up from there.
 //
-// Status. These types predate a2tea's adoption of the real A2UI protocol
-// (github.com/tmc/a2ui). ButtonClicked is emitted by the surface renderer;
-// the rest are not emitted yet. They are a provisional host-facing vocabulary and will
-// be re-grounded in A2UI catalog terms when the interaction round-trip is
-// built: A2UI models interactions as a Button's Action / a ClientMessage, has
-// TextField (not "input") and ChoicePicker (not "choice"), and has no Form
-// component at all (see the note on FormSubmitted). Treat the shapes here as
-// not yet stable.
+// ButtonClicked carries the activated button's resolved Action so the host can
+// round-trip it as a protocol-native a2ui.ClientMessage{Action *ActionEvent}.
+// When a button has an EventAction, the emitted ButtonClicked also includes the
+// a2ui.ClientMessage. Buttons with only a FunctionCall action (client-side
+// functions with no server event) produce a ButtonClicked with nil Action —
+// client-side function calls are out of scope for a2tea and are handled by the
+// host.
+//
+// InputSubmitted, ChoiceSelected, and FormSubmitted are not emitted yet. They
+// are provisional and will be re-grounded in A2UI catalog terms when wired.
 //
 // Source context. Every event embeds Source, which carries the IDs a consumer
 // needs to tell interactions apart when more than one component (or the same
@@ -18,6 +20,8 @@
 // element-local ID like "ok" is ambiguous. The originating renderer fills
 // Source in when it dispatches the event.
 package event
+
+import a2ui "github.com/tmc/a2ui"
 
 // Source identifies where an event originated. It is embedded in every event
 // type so consumers can route an interaction back to the specific A2UI
@@ -34,15 +38,27 @@ type Source struct {
 
 // ButtonClicked is emitted when the user activates an A2UI Button: with the
 // surface focused, Tab / Shift+Tab cycle buttons and Enter dispatches this
-// event with Source set. It is the first (and so far only) event a renderer
-// emits.
+// event with Source set.
 //
-// TODO(a2tea): map the click to the button's A2UI Action so it can round-trip
-// to the agent as a ClientMessage.
+// When the button has an EventAction, Action is non-nil and ClientMessage
+// carries the protocol-native a2ui.ClientMessage{Action *ActionEvent} ready
+// for the host to round-trip to the agent. When the button has only a
+// FunctionCall action (or no action), Action is nil and ClientMessage is the
+// zero value — client-side function calls are handled by the host, not a2tea.
+//
+// ActionEvent.Timestamp is left empty; the host stamps it before sending to
+// the agent so that the renderer's Update path stays deterministic for tests.
 type ButtonClicked struct {
 	Source
 	// ID is the a2ui.Component ID of the activated Button.
 	ID string
+	// Action is the button's resolved EventAction, or nil for buttons with
+	// only a FunctionCall action (or no action at all).
+	Action *a2ui.EventAction
+	// ClientMessage is the protocol-native message carrying the ActionEvent.
+	// It is non-zero only when Action is non-nil. The host can send this
+	// directly to the agent without further translation.
+	ClientMessage a2ui.ClientMessage
 }
 
 // InputSubmitted is emitted when the user confirms an A2UI TextField value.

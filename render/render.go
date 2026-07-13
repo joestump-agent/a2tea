@@ -11,7 +11,9 @@
 //
 // Interaction: Buttons are focusable. When the host grants the surface focus,
 // Tab / Shift+Tab cycle the buttons and Enter emits event.ButtonClicked as a
-// tea.Msg. Editing input components is not wired yet.
+// tea.Msg. If the button has an EventAction, the event also carries the
+// resolved action and a protocol-native a2ui.ClientMessage. Editing input
+// components is not wired yet.
 //
 // Composition contract. A renderer is designed to be embedded as a child of a
 // larger TUI (crush), not to be the root of its own program:
@@ -83,8 +85,9 @@ func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
 // cycle button focus and Enter activates the focused button, emitting
-// event.ButtonClicked. Per the composition contract it never quits — the host
-// owns program exit.
+// event.ButtonClicked with the button's resolved Action (if it has an
+// EventAction) and a protocol-native a2ui.ClientMessage. Per the composition
+// contract it never quits — the host owns program exit.
 func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !s.Focused() || len(s.focusables) == 0 {
 		return s, nil
@@ -101,10 +104,22 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		id := s.focusables[s.focusIdx]
 		return s, func() tea.Msg {
-			return event.ButtonClicked{
+			evt := event.ButtonClicked{
 				Source: event.Source{ComponentID: id, SurfaceID: s.id},
 				ID:     id,
 			}
+			if c, ok := s.byID[id]; ok && c.Button.Action.Event != nil {
+				evt.Action = c.Button.Action.Event
+				evt.ClientMessage = a2ui.ClientMessage{
+					Version: a2ui.Version,
+					Action: &a2ui.ActionEvent{
+						Name:              c.Button.Action.Event.Name,
+						SurfaceID:         s.id,
+						SourceComponentID: id,
+					},
+				}
+			}
+			return evt
 		}
 	}
 	return s, nil
