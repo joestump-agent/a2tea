@@ -8,7 +8,7 @@ import (
 
 // renderButton renders a Button as bracketed chrome around its child's
 // rendered, trimmed content: "[ label ]". The whole bracketed run goes
-// through one style — styleButton idle, styleButtonFocused when focused —
+// through one style — Button idle, ButtonFocused when focused —
 // so focus (reverse-video) reads as a single solid highlight.
 //
 // Variant decision (default / primary / borderless): default and primary
@@ -40,7 +40,7 @@ func (s *Surface) renderButton(c a2ui.Component, seen map[string]bool) string {
 		chrome = label
 	}
 	if s.isFocused(c.ID) {
-		return styleButtonFocused.Render(chrome)
+		return s.styles.ButtonFocused.Render(chrome)
 	}
-	return styleButton.Render(chrome)
+	return s.styles.Button.Render(chrome)
 }

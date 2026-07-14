@@ -3,7 +3,7 @@ package render
 import a2ui "github.com/tmc/a2ui"
 
 // Media components render as compact one-line placeholders — terminals do not
-// display images, video, or audio. All placeholders use styleCaption and are
+// display images, video, or audio. All placeholders use the Caption style and are
 // left unwrapped/untruncated; the host wraps long URLs as it sees fit.
 
 // renderImage renders an Image component as a placeholder: the glyph plus the
@@ -17,7 +17,7 @@ func (s *Surface) renderImage(c a2ui.Component) string {
 	if desc == "" {
 		desc = s.dynString(c.Image.URL)
 	}
-	return styleCaption.Render("🖼 " + desc)
+	return s.styles.Caption.Render("🖼 " + desc)
 }
 
 // renderIcon renders an Icon component as its name wrapped in angle quotes,
@@ -35,13 +35,13 @@ func (s *Surface) renderIcon(c a2ui.Component) string {
 	case n.Binding != nil:
 		name = "{binding}"
 	}
-	return styleCaption.Render("⟨" + name + "⟩")
+	return s.styles.Caption.Render("⟨" + name + "⟩")
 }
 
 // renderVideo renders a Video component as a placeholder: a play glyph plus
 // the URL (VideoComponent carries no title or description field).
 func (s *Surface) renderVideo(c a2ui.Component) string {
-	return styleCaption.Render("▶ " + s.dynString(c.Video.URL))
+	return s.styles.Caption.Render("▶ " + s.dynString(c.Video.URL))
 }
 
 // renderAudio renders an AudioPlayer component as a placeholder: a note glyph
@@ -54,5 +54,5 @@ func (s *Surface) renderAudio(c a2ui.Component) string {
 	if desc == "" {
 		desc = s.dynString(c.AudioPlayer.URL)
 	}
-	return styleCaption.Render("♪ " + desc)
+	return s.styles.Caption.Render("♪ " + desc)
 }

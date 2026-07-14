@@ -84,13 +84,13 @@ func (s *Surface) renderDivider(c a2ui.Component) string {
 func (s *Surface) renderTabs(c a2ui.Component, seen map[string]bool) string {
 	tabs := c.Tabs.Tabs
 	if len(tabs) == 0 {
-		return styleCaption.Render("[a2tea: tabs with no tabs]")
+		return s.styles.Caption.Render("[a2tea: tabs with no tabs]")
 	}
 	titles := make([]string, len(tabs))
 	for i, t := range tabs {
 		titles[i] = s.dynString(t.Title)
 	}
-	titles[0] = styleHeading.Render(titles[0])
+	titles[0] = s.styles.Heading.Render(titles[0])
 	return strings.Join(titles, " │ ") + "\n" + s.renderComponent(tabs[0].Child, seen)
 }
 
@@ -99,7 +99,7 @@ func (s *Surface) renderTabs(c a2ui.Component, seen map[string]bool) string {
 // is deliberately not rendered — a closed modal shows only its trigger.
 func (s *Surface) renderModal(c a2ui.Component, seen map[string]bool) string {
 	trigger := s.renderComponent(c.Modal.Trigger, seen)
-	note := styleCaption.Render("[a2tea: modal content hidden until interaction support lands]")
+	note := s.styles.Caption.Render("[a2tea: modal content hidden until interaction support lands]")
 	return trigger + "\n" + note
 }
 

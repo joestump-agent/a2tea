@@ -53,6 +53,19 @@ type Model interface {
 	Focused() bool
 }
 
+// Option configures a Surface at construction time via NewSurface options.
+type Option func(*Surface)
+
+// WithStyles overrides the Surface's chrome styles with the provided set.
+// Call DefaultStyles, override specific fields, and pass the result:
+//
+//	st := render.DefaultStyles()
+//	st.Heading = st.Heading.Foreground(lipgloss.Color("99"))
+//	surf := render.NewSurface(id, comps, render.WithStyles(st))
+func WithStyles(st Styles) Option {
+	return func(s *Surface) { s.styles = st }
+}
+
 // Surface renders one A2UI surface: the component set from an updateComponents
 // message, walked as a tree starting from its root.
 type Surface struct {
@@ -60,6 +73,10 @@ type Surface struct {
 	id     string
 	byID   map[string]a2ui.Component
 	rootID string
+
+	// styles holds the chrome styles for this surface. Defaults to
+	// DefaultStyles when no WithStyles option is provided.
+	styles Styles
 
 	// data holds resolved data-model values keyed by path, used to resolve
 	// bound DynamicString/Value components at render time.
@@ -76,12 +93,25 @@ type Surface struct {
 // is referenced (or none is), it falls back to the first in declaration order.
 // surfaceID is the A2UI surfaceId the components belong to; it is carried on
 // the events the surface emits.
-func NewSurface(surfaceID string, components []a2ui.Component) *Surface {
+//
+// Optional configuration via functional options (e.g. WithStyles) may be
+// appended after the two required arguments; calling NewSurface without any
+// options produces a surface with DefaultStyles — byte-for-byte identical to
+// the pre-options behaviour.
+func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *Surface {
 	byID := make(map[string]a2ui.Component, len(components))
 	for _, c := range components {
 		byID[c.ID] = c
 	}
-	s := &Surface{id: surfaceID, byID: byID, rootID: rootID(components)}
+	s := &Surface{
+		id:     surfaceID,
+		byID:   byID,
+		rootID: rootID(components),
+		styles: DefaultStyles(),
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
 	s.focusables = s.collectFocusables()
 	return s
 }
@@ -319,7 +349,7 @@ func (s *Surface) withWidth(w int, f func() string) string {
 // it renders a single placeholder.
 func (s *Surface) renderChildren(cl a2ui.ChildList, seen map[string]bool) []string {
 	if cl.Template != nil {
-		return []string{styleCaption.Render("[a2tea: dynamic children not yet supported]")}
+		return []string{s.styles.Caption.Render("[a2tea: dynamic children not yet supported]")}
 	}
 	parts := make([]string, 0, len(cl.IDs))
 	for _, id := range cl.IDs {

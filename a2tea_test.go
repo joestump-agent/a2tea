@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/joestump-agent/a2tea"
+	"github.com/joestump-agent/a2tea/render"
 )
 
 // sampleReply is an LLM-style reply: prose wrapping an <a2ui-json> block whose
@@ -61,6 +63,42 @@ func TestRenderSurface(t *testing.T) {
 		out := m.View().Content
 		if !strings.Contains(out, "Hi there") {
 			t.Fatalf("rendered surface = %q, want the card's text", out)
+		}
+		return
+	}
+	t.Fatal("no message part found in scan")
+}
+
+// TestRenderForwardsWithStyles verifies that render.Option values passed to the
+// public a2tea.Render are threaded through to the Surface — the host-facing half
+// of the theming API. sampleReply is a Card, so a themed border foreground shows
+// up as a color SGR; the default (no options) path stays monochrome.
+func TestRenderForwardsWithStyles(t *testing.T) {
+	parts, err := a2tea.Scan(sampleReply)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	for _, p := range parts {
+		if len(p.Messages) == 0 {
+			continue
+		}
+
+		st := render.DefaultStyles()
+		st.CardBorder = st.CardBorder.BorderForeground(lipgloss.Color("99"))
+		themed, err := a2tea.Render(p.Messages, render.WithStyles(st))
+		if err != nil {
+			t.Fatalf("Render themed: %v", err)
+		}
+		if raw := themed.View().Content; !strings.Contains(raw, "38;5;99") {
+			t.Fatalf("a2tea.Render did not forward WithStyles; want color 99 in border, got %q", raw)
+		}
+
+		plain, err := a2tea.Render(p.Messages)
+		if err != nil {
+			t.Fatalf("Render default: %v", err)
+		}
+		if raw := plain.View().Content; strings.Contains(raw, "38;5;99") {
+			t.Fatalf("default a2tea.Render should be monochrome, got %q", raw)
 		}
 		return
 	}
