@@ -38,10 +38,16 @@ func (s *Surface) renderRow(c a2ui.Component, seen map[string]bool) string {
 // renderList renders a List component. Vertical lists (the default when
 // Direction is unset) bullet each child block — rendering the children under
 // a budget narrowed by the 2-cell bullet indent so wrapped lines still fit —
-// while horizontal lists lay children out like a Row.
+// while horizontal lists lay children out like a Row. In compact mode a
+// horizontal list falls back to vertical stacking (like a compact Row) so it
+// doesn't overflow a narrow width budget.
 func (s *Surface) renderList(c a2ui.Component, seen map[string]bool) string {
 	if c.List.Direction == a2ui.ListDirectionHorizontal {
-		return joinRow(s.renderChildren(c.List.Children, seen))
+		parts := s.renderChildren(c.List.Children, seen)
+		if s.compact() {
+			return lipgloss.JoinVertical(lipgloss.Left, parts...)
+		}
+		return joinRow(parts)
 	}
 	childWidth := s.width
 	if childWidth > 2 {

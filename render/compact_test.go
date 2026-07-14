@@ -207,3 +207,77 @@ func TestNonCompactOutputUnchanged(t *testing.T) {
 		t.Fatalf("WithCompact(false) changed wide output:\nplain:    %q\ndisabled: %q", plain, disabled)
 	}
 }
+
+// TestCompactDoesNotLeakIntoNestedSubtree verifies the compact decision keys
+// off the host-allocated width, not the per-subtree budget that withWidth
+// narrows. At a top-level width of 43 (>= the 40-col threshold) a nested
+// card→card→row must render fully normal: both cards keep their borders and
+// the row stays horizontal, even though the inner budget dips below 40.
+func TestCompactDoesNotLeakIntoNestedSubtree(t *testing.T) {
+	// Card borders are the clean signal for whether compact activated: compact
+	// drops them. (Row horizontality can't be asserted here — the nested card
+	// budget width-wraps any row regardless of compact.)
+	comps := []a2ui.Component{
+		{ID: "root", Card: &a2ui.CardComponent{Child: "inner"}},
+		{ID: "inner", Card: &a2ui.CardComponent{Child: "leaf"}},
+		text("leaf", "hi"),
+	}
+
+	// Width 43 >= threshold: NOT compact anywhere — both cards keep borders,
+	// even though the inner card's per-subtree budget (43-4-4=35) is below 40.
+	out := renderAt(comps, 43)
+	if got := strings.Count(out, "╭"); got != 2 {
+		t.Fatalf("compact leaked into nested subtree: expected 2 borders at width 43, got %d:\n%s", got, out)
+	}
+
+	// Width 30 < threshold: compact throughout — both cards drop their borders.
+	compactOut := renderAt(comps, 30)
+	if got := strings.Count(compactOut, "╭"); got != 0 {
+		t.Fatalf("expected 0 borders at compact width 30, got %d:\n%s", got, compactOut)
+	}
+}
+
+// TestCompactHorizontalListStacks verifies a horizontal List stacks vertically
+// in compact mode instead of overflowing the width budget.
+func TestCompactHorizontalListStacks(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", List: &a2ui.ListComponent{
+			Direction: a2ui.ListDirectionHorizontal,
+			Children:  a2ui.ChildList{IDs: []string{"a", "b", "c"}},
+		}},
+		text("a", "AAAAAAAAAA"),
+		text("b", "BBBBBBBBBB"),
+		text("c", "CCCCCCCCCC"),
+	}
+
+	compactOut := renderAt(comps, 30)
+	if w := maxLineWidth(compactOut); w > 30 {
+		t.Fatalf("compact horizontal list should fit width 30, got max line %d:\n%s", w, compactOut)
+	}
+	if sameLine(compactOut, "AAAAAAAAAA", "BBBBBBBBBB") {
+		t.Fatalf("compact horizontal list should stack, not stay on one line:\n%s", compactOut)
+	}
+
+	// At a wide width it stays horizontal (unchanged): all children on one line.
+	wideOut := renderAt(comps, 80)
+	if !sameLine(wideOut, "AAAAAAAAAA", "BBBBBBBBBB", "CCCCCCCCCC") {
+		t.Fatalf("wide horizontal list should stay horizontal (one line):\n%s", wideOut)
+	}
+}
+
+// sameLine reports whether some single line of s contains every substring.
+func sameLine(s string, subs ...string) bool {
+	for _, ln := range strings.Split(s, "\n") {
+		all := true
+		for _, sub := range subs {
+			if !strings.Contains(ln, sub) {
+				all = false
+				break
+			}
+		}
+		if all {
+			return true
+		}
+	}
+	return false
+}

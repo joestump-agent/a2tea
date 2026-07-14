@@ -128,6 +128,21 @@ type Surface struct {
 	// compactThreshold is the width below which compact rendering activates
 	// automatically. Defaults to compactWidthThreshold.
 	compactThreshold int
+
+	// hostWidth is the width the host allocated via SetSize. The compact-mode
+	// decision keys off this — a stable property of the panel — rather than
+	// s.width, which withWidth narrows as the walk descends into cards/lists.
+	hostWidth int
+}
+
+// SetSize records the host-allocated width for the compact-mode decision, then
+// forwards to the embedded base (which the render walk reads and narrows via
+// withWidth). Keeping the compact decision on hostWidth stops compact mode from
+// leaking into nested subtrees whose per-subtree budget dips below the
+// threshold on a surface that is wide overall.
+func (s *Surface) SetSize(width, height int) {
+	s.hostWidth = width
+	s.base.SetSize(width, height)
 }
 
 // NewSurface indexes components by ID and picks the surface root: the single
@@ -284,9 +299,10 @@ func (s *Surface) isFocused(id string) bool {
 
 // compact reports whether the surface should render in compact mode. When an
 // explicit override is set via WithCompact it wins; otherwise compact mode
-// activates automatically when the surface has a non-zero width below the
-// threshold. Width 0 (unconstrained) and width >= threshold use the normal
-// rendering path.
+// activates automatically when the host-allocated width is non-zero and below
+// the threshold. Host width 0 (unconstrained) and >= threshold use the normal
+// rendering path. The decision uses hostWidth, not s.width, so it stays uniform
+// across the whole surface even as withWidth narrows the per-subtree budget.
 func (s *Surface) compact() bool {
 	switch s.compactOverride {
 	case compactForce:
@@ -294,7 +310,7 @@ func (s *Surface) compact() bool {
 	case compactDisable:
 		return false
 	default:
-		return s.width > 0 && s.width < s.compactThreshold
+		return s.hostWidth > 0 && s.hostWidth < s.compactThreshold
 	}
 }
 
