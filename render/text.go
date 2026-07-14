@@ -9,11 +9,11 @@ func (s *Surface) renderText(c a2ui.Component) string {
 	text := s.dynString(c.Text.Text)
 	switch c.Text.Variant {
 	case a2ui.TextVariantH1, a2ui.TextVariantH2, a2ui.TextVariantH3:
-		text = styleHeading.Render(text)
+		text = s.styles.Heading.Render(text)
 	case a2ui.TextVariantH4, a2ui.TextVariantH5:
-		text = styleSubheading.Render(text)
+		text = s.styles.Subheading.Render(text)
 	case a2ui.TextVariantCaption:
-		text = styleCaption.Render(text)
+		text = s.styles.Caption.Render(text)
 	}
 	return wrapTo(text, s.width)
 }

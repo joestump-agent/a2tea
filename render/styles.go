@@ -6,29 +6,52 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// Chrome styles shared by the component renderers.
+// Styles holds the lipgloss styles for every chrome element a2tea renders.
+// The zero value is not valid — always start from DefaultStyles and customize
+// from there:
 //
-// Deliberately monochrome: a2tea surfaces render inside a host TUI (crush)
-// that owns the color theme, so component chrome sticks to attributes that
-// read correctly on any background — borders, bold, faint, and reverse-video
-// for focus. Do not add hardcoded colors here.
-var (
-	// styleCardBorder draws the rounded box around a Card's child.
-	styleCardBorder = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
+//	st := render.DefaultStyles()
+//	st.Heading = st.Heading.Foreground(lipgloss.Color("99"))
+//	surf := render.NewSurface(id, comps, render.WithStyles(st))
+//
+// DefaultStyles is deliberately monochrome: a2tea surfaces render inside a host
+// TUI (crush) that owns the color theme, so the default chrome sticks to
+// attributes that read correctly on any background — borders, bold, faint, and
+// reverse-video for focus. A host that wants to inject its palette builds on
+// DefaultStyles and overrides specific fields.
+type Styles struct {
+	// CardBorder draws the rounded box around a Card's child.
+	CardBorder lipgloss.Style
 
-	// styleHeading renders Text variants h1–h3.
-	styleHeading = lipgloss.NewStyle().Bold(true)
-	// styleSubheading renders Text variants h4–h5.
-	styleSubheading = lipgloss.NewStyle().Bold(true).Faint(true)
-	// styleCaption renders caption-variant Text and other secondary chrome
+	// Heading renders Text variants h1–h3.
+	Heading lipgloss.Style
+	// Subheading renders Text variants h4–h5.
+	Subheading lipgloss.Style
+	// Caption renders caption-variant Text and other secondary chrome
 	// (field labels, media placeholders).
-	styleCaption = lipgloss.NewStyle().Faint(true)
+	Caption lipgloss.Style
 
-	// styleButton renders an idle button's label.
-	styleButton = lipgloss.NewStyle().Bold(true)
-	// styleButtonFocused renders the focused button's label.
-	styleButtonFocused = lipgloss.NewStyle().Bold(true).Reverse(true)
-)
+	// Button renders an idle button's label.
+	Button lipgloss.Style
+	// ButtonFocused renders the focused button's label.
+	ButtonFocused lipgloss.Style
+}
+
+// DefaultStyles returns the monochrome style set used when no host palette is
+// provided. Do not add hardcoded colors here — the host overrides specific
+// fields via WithStyles.
+func DefaultStyles() Styles {
+	return Styles{
+		CardBorder: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1),
+
+		Heading:    lipgloss.NewStyle().Bold(true),
+		Subheading: lipgloss.NewStyle().Bold(true).Faint(true),
+		Caption:    lipgloss.NewStyle().Faint(true),
+
+		Button:        lipgloss.NewStyle().Bold(true),
+		ButtonFocused: lipgloss.NewStyle().Bold(true).Reverse(true),
+	}
+}
 
 // wrapTo wraps s to width w when w > 0; otherwise returns s unchanged.
 func wrapTo(s string, w int) string {

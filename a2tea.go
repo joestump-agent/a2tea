@@ -68,13 +68,17 @@ func Scan(s string) ([]Part, error) {
 // bound values that resolve on the next render, and deleteSurface removes the
 // targeted surface.
 //
+// Optional functional options (e.g. render.WithStyles) may be appended after
+// the messages argument; calling Render without any options produces
+// byte-for-byte identical output to the pre-options behaviour.
+//
 // It returns ErrNoRenderableSurface when the messages describe no components
 // to draw (or when the surface was deleted), so a host can fall back to
 // plain text.
 //
 // The returned model is a render.Model — an embeddable child component that
 // does not handle quit. To run one directly, wrap it with Standalone.
-func Render(msgs []a2ui.ServerMessage) (tea.Model, error) {
+func Render(msgs []a2ui.ServerMessage, opts ...render.Option) (tea.Model, error) {
 	var surfaceID string
 	var firstComponents []a2ui.Component
 	found := false
@@ -93,7 +97,7 @@ func Render(msgs []a2ui.ServerMessage) (tea.Model, error) {
 		return nil, ErrNoRenderableSurface
 	}
 
-	s := render.NewSurface(surfaceID, firstComponents)
+	s := render.NewSurface(surfaceID, firstComponents, opts...)
 
 	// Apply all subsequent messages (including further updateComponents for
 	// compositing, data-model updates, and deleteSurface).

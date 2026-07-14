@@ -16,11 +16,11 @@ const sliderCells = 16
 
 // labeled prefixes body with a caption-styled label line when label is
 // non-empty; otherwise returns body unchanged.
-func labeled(label, body string) string {
+func (s *Surface) labeled(label, body string) string {
 	if label == "" {
 		return body
 	}
-	return styleCaption.Render(label) + "\n" + body
+	return s.styles.Caption.Render(label) + "\n" + body
 }
 
 // dynNumString formats a DynamicNumber's literal as a plain decimal, or a
@@ -47,9 +47,9 @@ func (s *Surface) renderTextField(c a2ui.Component) string {
 		value = s.dynString(*tf.Value)
 	}
 	if value == "" {
-		value = styleCaption.Render("(empty)")
+		value = s.styles.Caption.Render("(empty)")
 	}
-	return wrapTo(labeled(s.dynString(tf.Label), "▏"+value), s.width)
+	return wrapTo(s.labeled(s.dynString(tf.Label), "▏"+value), s.width)
 }
 
 // renderCheckBox renders a CheckBox as "[x] label" when the value's literal
@@ -64,9 +64,9 @@ func (s *Surface) renderCheckBox(c a2ui.Component) string {
 	line := box + " " + s.dynString(cb.Label)
 	switch {
 	case cb.Value.Binding != nil:
-		line += " " + styleCaption.Render("{binding}")
+		line += " " + s.styles.Caption.Render("{binding}")
 	case cb.Value.FunctionCall != nil:
-		line += " " + styleCaption.Render("{fn}")
+		line += " " + s.styles.Caption.Render("{fn}")
 	}
 	return wrapTo(line, s.width)
 }
@@ -87,7 +87,7 @@ func (s *Surface) renderChoicePicker(c a2ui.Component) string {
 	lines := make([]string, 0, len(cp.Options)+1)
 	if cp.Label != nil {
 		if label := s.dynString(*cp.Label); label != "" {
-			lines = append(lines, styleCaption.Render(label))
+			lines = append(lines, s.styles.Caption.Render(label))
 		}
 	}
 	for _, opt := range cp.Options {
@@ -121,7 +121,7 @@ func (s *Surface) renderSlider(c a2ui.Component) string {
 		lo = *sl.Min
 	}
 	span := sl.Max - lo
-	bar := styleCaption.Render(strings.Repeat("─", sliderCells))
+	bar := s.styles.Caption.Render(strings.Repeat("─", sliderCells))
 	if sl.Value.Literal != nil && span > 0 {
 		ratio := (*sl.Value.Literal - lo) / span
 		if ratio < 0 {
@@ -141,7 +141,7 @@ func (s *Surface) renderSlider(c a2ui.Component) string {
 	if sl.Label != nil {
 		label = s.dynString(*sl.Label)
 	}
-	return wrapTo(labeled(label, body), s.width)
+	return wrapTo(s.labeled(label, body), s.width)
 }
 
 // renderDateTimeInput renders a DateTimeInput: an optional caption label
@@ -151,11 +151,11 @@ func (s *Surface) renderDateTimeInput(c a2ui.Component) string {
 	dt := c.DateTimeInput
 	value := s.dynString(dt.Value)
 	if value == "" {
-		value = styleCaption.Render("(unset)")
+		value = s.styles.Caption.Render("(unset)")
 	}
 	label := ""
 	if dt.Label != nil {
 		label = s.dynString(*dt.Label)
 	}
-	return wrapTo(labeled(label, value), s.width)
+	return wrapTo(s.labeled(label, value), s.width)
 }
