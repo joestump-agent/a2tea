@@ -76,9 +76,12 @@ func (s *Surface) applyDataModel(path string, value any) {
 }
 
 // deriveRootID returns the ID of the component that is not referenced as any
-// other component's child, falling back to the first in iteration order. It
-// prefers the current rootID if it is still unreferenced, so adding new
-// standalone components does not change the root.
+// other component's child. It prefers the current rootID if it is still
+// unreferenced, so adding new standalone components does not change the root.
+// Otherwise it chooses deterministically — the lexicographically smallest
+// unreferenced ID (or the smallest ID overall if every component is
+// referenced, i.e. a cycle) — because map iteration order is randomized and
+// the rendered root must be stable across renders.
 func (s *Surface) deriveRootID() string {
 	if len(s.byID) == 0 {
 		return ""
@@ -95,16 +98,17 @@ func (s *Surface) deriveRootID() string {
 			return s.rootID
 		}
 	}
-	var firstID string
+	var firstID, firstUnref string
 	for id := range s.byID {
 		if firstID == "" || id < firstID {
 			firstID = id
 		}
-	}
-	for id := range s.byID {
-		if !referenced[id] {
-			return id
+		if !referenced[id] && (firstUnref == "" || id < firstUnref) {
+			firstUnref = id
 		}
+	}
+	if firstUnref != "" {
+		return firstUnref
 	}
 	return firstID
 }

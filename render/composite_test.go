@@ -1,7 +1,6 @@
 package render_test
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -219,5 +218,29 @@ func TestApplyDeleteDifferentSurface(t *testing.T) {
 	}
 }
 
-// Verify fmt is used to keep the import.
-var _ = fmt.Sprintf
+// TestApplyRootDeterministic verifies that when an update makes the previous
+// root a referenced child and introduces multiple root-eligible components,
+// the derived root is stable across renders (map iteration order is random).
+func TestApplyRootDeterministic(t *testing.T) {
+	var first string
+	for i := 0; i < 50; i++ {
+		s := render.NewSurface("s1", []a2ui.Component{
+			{ID: "orig", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("ORIG")}},
+		})
+		// "wrap" now references "orig"; "loose" is a second unreferenced root.
+		s.Apply([]a2ui.ServerMessage{
+			{UpdateComponents: &a2ui.UpdateComponents{SurfaceID: "s1", Components: []a2ui.Component{
+				{ID: "wrap", Card: &a2ui.CardComponent{Child: "orig"}},
+				{ID: "loose", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("LOOSE")}},
+			}}},
+		})
+		view := s.View().Content
+		if first == "" {
+			first = view
+			continue
+		}
+		if view != first {
+			t.Fatalf("non-deterministic root selection across renders:\nfirst:\n%q\ngot:\n%q", first, view)
+		}
+	}
+}
