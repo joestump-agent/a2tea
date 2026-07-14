@@ -46,13 +46,17 @@ func dynNumString(d a2ui.DynamicNumber) string {
 func (s *Surface) renderTextField(c a2ui.Component) string {
 	tf := c.TextField
 	value := ""
-	// Edited value shadows the static literal.
+	// An edited value shadows the static literal — including an edit to the
+	// empty string, which means the user cleared the field and must render as
+	// "(empty)", not fall back to the literal (that would disagree with the
+	// value readout, which reports the cleared "").
+	edited := false
 	if s.fieldValues != nil {
 		if v, ok := s.fieldValues[c.ID]; ok {
-			value = v
+			value, edited = v, true
 		}
 	}
-	if value == "" && tf.Value != nil {
+	if !edited && tf.Value != nil {
 		value = s.dynString(*tf.Value)
 	}
 	if value == "" {

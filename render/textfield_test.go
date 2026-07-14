@@ -1,6 +1,7 @@
 package render_test
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,6 +12,14 @@ import (
 	"github.com/joestump-agent/a2tea/event"
 	"github.com/joestump-agent/a2tea/render"
 )
+
+// typeKey builds a KeyPressMsg for a printable character the way a real
+// terminal delivers it: both Code and Text are set. The renderer reads
+// key.Text (not key.Code) for input, so tests must set it — Code alone is not
+// what the wire produces and would silently type nothing.
+func typeKey(r rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: r, Text: string(r)}
+}
 
 // textFieldInput builds a TextField component with a literal value.
 func textFieldInput(id, val string) a2ui.Component {
@@ -54,7 +63,7 @@ func TestTabCyclesBetweenFieldAndButton(t *testing.T) {
 
 	// Initially focused on "field" (index 0).
 	out := ansi.Strip(s.View().Content)
-	if !contains(out, "▎") {
+	if !strings.Contains(out, "▎") {
 		t.Fatalf("text field should show focus cue initially: %q", out)
 	}
 
@@ -63,14 +72,14 @@ func TestTabCyclesBetweenFieldAndButton(t *testing.T) {
 	out = ansi.Strip(s.View().Content)
 	// Button has reverse-video when focused; the text field should NOT have
 	// the focus cue anymore.
-	if contains(out, "▎") {
+	if strings.Contains(out, "▎") {
 		t.Fatalf("text field should not show focus cue after tab: %q", out)
 	}
 
 	// Tab back to field.
 	s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	out = ansi.Strip(s.View().Content)
-	if !contains(out, "▎") {
+	if !strings.Contains(out, "▎") {
 		t.Fatalf("text field should show focus cue after tabbing back: %q", out)
 	}
 }
@@ -81,18 +90,62 @@ func TestTypingUpdatesRenderedValue(t *testing.T) {
 	s := fieldSurface(t)
 
 	// Type "X" into the focused field.
-	s.Update(tea.KeyPressMsg{Code: 'X'})
+	s.Update(typeKey('X'))
 
 	out := ansi.Strip(s.View().Content)
-	if !contains(out, "initialX") {
+	if !strings.Contains(out, "initialX") {
 		t.Fatalf("rendered value should include typed rune: %q", out)
 	}
 
 	// Type "Y".
-	s.Update(tea.KeyPressMsg{Code: 'Y'})
+	s.Update(typeKey('Y'))
 	out = ansi.Strip(s.View().Content)
-	if !contains(out, "initialXY") {
+	if !strings.Contains(out, "initialXY") {
 		t.Fatalf("rendered value should include both typed runes: %q", out)
+	}
+}
+
+// TestShiftedAndSymbolInputInserted verifies that Shift-produced characters
+// (uppercase letters and shifted symbols) are inserted. A real terminal
+// delivers these with the base rune in Code, ModShift set, and the shifted
+// character in Text — the renderer must read Text, not gate on Mod == 0.
+func TestShiftedAndSymbolInputInserted(t *testing.T) {
+	s := fieldSurface(t)
+
+	// Backspace the literal away so we can read exactly what was typed.
+	for range "initial" {
+		s.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+
+	// Shift+a → "A"; Shift+1 → "!". Both carry ModShift and a Code that is
+	// NOT the shifted character.
+	s.Update(tea.KeyPressMsg{Code: 'a', Mod: tea.ModShift, Text: "A"})
+	s.Update(tea.KeyPressMsg{Code: '1', Mod: tea.ModShift, Text: "!"})
+
+	vals := s.FieldValues()
+	if vals["field"].(string) != "A!" {
+		t.Fatalf("FieldValues['field'] = %q, want %q (shifted input dropped)", vals["field"], "A!")
+	}
+}
+
+// TestNavigationKeysDoNotInsert verifies that navigation and function keys —
+// whose Code is a sentinel above unicode.MaxRune and whose Text is empty — are
+// not inserted into the field. Inserting key.Code for these would append a
+// U+FFFD replacement character.
+func TestNavigationKeysDoNotInsert(t *testing.T) {
+	s := fieldSurface(t)
+
+	for _, code := range []rune{tea.KeyLeft, tea.KeyRight, tea.KeyUp, tea.KeyDown, tea.KeyHome, tea.KeyEnd, tea.KeyF1} {
+		s.Update(tea.KeyPressMsg{Code: code})
+	}
+
+	vals := s.FieldValues()
+	if vals["field"].(string) != "initial" {
+		t.Fatalf("FieldValues['field'] = %q, want unchanged %q (navigation key inserted)", vals["field"], "initial")
+	}
+	out := ansi.Strip(s.View().Content)
+	if strings.Contains(out, "�") {
+		t.Fatalf("rendered value contains a replacement character: %q", out)
 	}
 }
 
@@ -102,14 +155,14 @@ func TestBackspaceDeletesLastRune(t *testing.T) {
 	s := fieldSurface(t)
 
 	// Type "AB".
-	s.Update(tea.KeyPressMsg{Code: 'A'})
-	s.Update(tea.KeyPressMsg{Code: 'B'})
+	s.Update(typeKey('A'))
+	s.Update(typeKey('B'))
 
 	// Backspace removes "B".
 	s.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 
 	out := ansi.Strip(s.View().Content)
-	if !contains(out, "initialA") {
+	if !strings.Contains(out, "initialA") {
 		t.Fatalf("after backspace, rendered value should end with 'A': %q", out)
 	}
 }
@@ -120,13 +173,38 @@ func TestBackspaceToEmptyFallsBackToLiteral(t *testing.T) {
 	s := fieldSurface(t)
 
 	// Type "X".
-	s.Update(tea.KeyPressMsg{Code: 'X'})
+	s.Update(typeKey('X'))
 	// Delete it.
 	s.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 
 	out := ansi.Strip(s.View().Content)
-	if !contains(out, "initial") {
+	if !strings.Contains(out, "initial") {
 		t.Fatalf("after deleting all typed runes, should show literal: %q", out)
+	}
+}
+
+// TestClearingLiteralFieldRendersEmpty verifies that backspacing a literal
+// field all the way to empty renders "(empty)" — the cleared state — and the
+// value readout reports the empty string, not the stale literal. Rendering the
+// literal here would disagree with FieldValues and lose the "user cleared it"
+// signal.
+func TestClearingLiteralFieldRendersEmpty(t *testing.T) {
+	s := fieldSurface(t)
+
+	for range "initial" {
+		s.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+
+	out := ansi.Strip(s.View().Content)
+	if !strings.Contains(out, "(empty)") {
+		t.Fatalf("cleared field should render (empty): %q", out)
+	}
+	if strings.Contains(out, "initial") {
+		t.Fatalf("cleared field should not render the stale literal: %q", out)
+	}
+	vals := s.FieldValues()
+	if v := vals["field"].(string); v != "" {
+		t.Fatalf("FieldValues['field'] = %q, want cleared %q", v, "")
 	}
 }
 
@@ -136,7 +214,7 @@ func TestFieldValuesReturnsEditedValue(t *testing.T) {
 	s := fieldSurface(t)
 
 	// Type "!" into the focused field.
-	s.Update(tea.KeyPressMsg{Code: '!'})
+	s.Update(typeKey('!'))
 
 	vals := s.FieldValues()
 	v, ok := vals["field"]
@@ -189,7 +267,7 @@ func TestEnterOnButtonActivatesAfterTyping(t *testing.T) {
 
 	// Type "world" into the focused text field.
 	for _, r := range "world" {
-		s.Update(tea.KeyPressMsg{Code: r})
+		s.Update(typeKey(r))
 	}
 
 	// Tab to the button.
@@ -252,7 +330,7 @@ func TestEditingDoesNotAffectOtherField(t *testing.T) {
 	s.Focus()
 
 	// Type "X" into f1 (focused).
-	s.Update(tea.KeyPressMsg{Code: 'X'})
+	s.Update(typeKey('X'))
 
 	vals := s.FieldValues()
 	if vals["f1"].(string) != "oneX" {
@@ -264,7 +342,7 @@ func TestEditingDoesNotAffectOtherField(t *testing.T) {
 
 	// Tab to f2, type "Y".
 	s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	s.Update(tea.KeyPressMsg{Code: 'Y'})
+	s.Update(typeKey('Y'))
 
 	vals = s.FieldValues()
 	if vals["f1"].(string) != "oneX" {
@@ -273,19 +351,4 @@ func TestEditingDoesNotAffectOtherField(t *testing.T) {
 	if vals["f2"].(string) != "twoY" {
 		t.Fatalf("f2 = %v, want %q", vals["f2"], "twoY")
 	}
-}
-
-// contains is a minimal strings.Contains wrapper to avoid importing strings
-// in this test file.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || indexOf(s, substr) >= 0)
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
 }

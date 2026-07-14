@@ -14,8 +14,13 @@
 // Activation emits event.ButtonClicked (carrying the resolved *a2ui.EventAction)
 // and, when the button has a server-side Event action, a protocol-native
 // a2ui.ClientMessage whose ActionEvent carries Name, SurfaceID, and
-// SourceComponentID. FunctionCall-only buttons emit no ClientMessage. Editing
-// input components is not wired yet.
+// SourceComponentID. FunctionCall-only buttons emit no ClientMessage.
+//
+// TextFields are editable: they join Buttons in the focus ring, and when one
+// holds focus printable keys append to its value and backspace deletes. Typed
+// values are read back via FieldValues and flow into a button's ActionEvent
+// Context. Other input components (CheckBox, ChoicePicker, Slider,
+// DateTimeInput) remain read-only visuals for now.
 //
 // Composition contract. A renderer is designed to be embedded as a child of a
 // larger TUI (crush), not to be the root of its own program:
@@ -228,9 +233,13 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.deleteRune()
 		}
 	default:
-		// Rune key presses edit the focused text field.
-		if s.focusedIsTextField() && key.Mod == 0 && key.Code != 0 {
-			s.appendRune(key.Code)
+		// Printable key presses edit the focused text field. key.Text is the
+		// actual characters produced by the key — it already accounts for
+		// Shift (so "A" and "!" arrive as text) and is empty for navigation
+		// and control keys (arrows, Home/End, F-keys), whose Code is a
+		// sentinel above unicode.MaxRune that must never be inserted.
+		if s.focusedIsTextField() && key.Text != "" {
+			s.appendText(key.Text)
 		}
 	}
 	return s, nil
@@ -345,11 +354,13 @@ func (s *Surface) focusedIsTextField() bool {
 	return c.TextField != nil
 }
 
-// appendRune appends a rune to the focused text field's edited value,
+// appendText appends printable text to the focused text field's edited value,
 // lazily initializing the fieldValues map on first edit. On the first edit,
 // the field's current display value (literal or binding placeholder) is used
-// as the starting point so typed characters extend the existing text.
-func (s *Surface) appendRune(r rune) {
+// as the starting point so typed characters extend the existing text. The
+// argument is key.Text — the characters the key produced — which may be more
+// than one rune (composed/IME input) and already reflects Shift.
+func (s *Surface) appendText(text string) {
 	id := s.focusables[s.focusIdx]
 	if s.fieldValues == nil {
 		s.fieldValues = make(map[string]string)
@@ -362,29 +373,35 @@ func (s *Surface) appendRune(r rune) {
 			s.fieldValues[id] = s.dynString(*c.TextField.Value)
 		}
 	}
-	s.fieldValues[id] += string(r)
+	s.fieldValues[id] += text
 }
 
-// deleteRune removes the last rune from the focused text field's edited
-// value. If the value drops back to the field's original literal, the key is
-// deleted so rendering falls back to the static literal.
+// deleteRune removes the last rune from the focused text field's edited value.
+// On the first edit of a pristine field it seeds from the literal, so backspace
+// can shorten (and ultimately clear) a pre-filled default — not just text the
+// user typed this session. If the value drops back to exactly the original
+// literal, the key is deleted so rendering falls back to the static literal.
 func (s *Surface) deleteRune() {
 	id := s.focusables[s.focusIdx]
+	literal := ""
+	if c := s.byID[id]; c.TextField != nil && c.TextField.Value != nil {
+		literal = s.dynString(*c.TextField.Value)
+	}
 	if s.fieldValues == nil {
-		return
+		s.fieldValues = make(map[string]string)
 	}
 	v, ok := s.fieldValues[id]
-	if !ok || len(v) == 0 {
+	if !ok {
+		// Seed from the literal so a pre-filled field is editable.
+		v = literal
+	}
+	if len(v) == 0 {
 		return
 	}
 	runes := []rune(v)
 	v = string(runes[:len(runes)-1])
 	// If the edited value matches the original literal, drop the key so
 	// rendering falls back to the static value.
-	literal := ""
-	if c := s.byID[id]; c.TextField != nil && c.TextField.Value != nil {
-		literal = s.dynString(*c.TextField.Value)
-	}
 	if v == literal {
 		delete(s.fieldValues, id)
 	} else {
