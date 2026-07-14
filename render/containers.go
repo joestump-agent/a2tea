@@ -88,7 +88,7 @@ func (s *Surface) renderTabs(c a2ui.Component, seen map[string]bool) string {
 	}
 	titles := make([]string, len(tabs))
 	for i, t := range tabs {
-		titles[i] = dynString(t.Title)
+		titles[i] = s.dynString(t.Title)
 	}
 	titles[0] = styleHeading.Render(titles[0])
 	return strings.Join(titles, " │ ") + "\n" + s.renderComponent(tabs[0].Child, seen)

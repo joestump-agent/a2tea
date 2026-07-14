@@ -12,10 +12,10 @@ import a2ui "github.com/tmc/a2ui"
 func (s *Surface) renderImage(c a2ui.Component) string {
 	desc := ""
 	if c.Image.Description != nil {
-		desc = dynString(*c.Image.Description)
+		desc = s.dynString(*c.Image.Description)
 	}
 	if desc == "" {
-		desc = dynString(c.Image.URL)
+		desc = s.dynString(c.Image.URL)
 	}
 	return styleCaption.Render("🖼 " + desc)
 }
@@ -41,7 +41,7 @@ func (s *Surface) renderIcon(c a2ui.Component) string {
 // renderVideo renders a Video component as a placeholder: a play glyph plus
 // the URL (VideoComponent carries no title or description field).
 func (s *Surface) renderVideo(c a2ui.Component) string {
-	return styleCaption.Render("▶ " + dynString(c.Video.URL))
+	return styleCaption.Render("▶ " + s.dynString(c.Video.URL))
 }
 
 // renderAudio renders an AudioPlayer component as a placeholder: a note glyph
@@ -49,10 +49,10 @@ func (s *Surface) renderVideo(c a2ui.Component) string {
 func (s *Surface) renderAudio(c a2ui.Component) string {
 	desc := ""
 	if c.AudioPlayer.Description != nil {
-		desc = dynString(*c.AudioPlayer.Description)
+		desc = s.dynString(*c.AudioPlayer.Description)
 	}
 	if desc == "" {
-		desc = dynString(c.AudioPlayer.URL)
+		desc = s.dynString(c.AudioPlayer.URL)
 	}
 	return styleCaption.Render("♪ " + desc)
 }
