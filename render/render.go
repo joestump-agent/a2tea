@@ -116,10 +116,17 @@ type Surface struct {
 	// bound DynamicString/Value components at render time.
 	data map[string]any
 
-	// focusables are the IDs of interactive components (buttons) in
-	// depth-first tree order; focusIdx points at the one holding focus.
+	// focusables are the IDs of interactive components (buttons and text
+	// fields) in depth-first tree order; focusIdx points at the one holding
+	// focus.
 	focusables []string
 	focusIdx   int
+
+	// fieldValues holds the edited text of TextField components, keyed by
+	// component ID. It is lazily initialized on first edit. An entry here
+	// shadows the component's static literal value for both rendering and
+	// value readout (gatherFieldValues / FieldValues).
+	fieldValues map[string]string
 
 	// compactOverride controls whether compact rendering is forced on,
 	// forced off, or decided automatically from the surface width.
@@ -178,17 +185,20 @@ func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *
 func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
-// cycle button focus and Enter activates the focused button. Activation emits
-// two messages via tea.Batch:
+// cycle through buttons and text fields. Enter activates the focused button.
+// When a text field holds focus, rune key presses append to its value and
+// backspace deletes the last rune; Enter on a text field is a no-op (there is
+// no form-submit concept).
 //
-//   - event.ButtonClicked — the host-facing convenience event, now carrying
+// Button activation emits two messages via tea.Batch:
+//   - event.ButtonClicked — the host-facing convenience event, carrying
 //     the button's resolved *a2ui.EventAction (nil for buttons with no server
 //     event).
 //   - a2ui.ClientMessage — the protocol-native round-trip message whose
-//     ActionEvent carries Name, SurfaceID, and SourceComponentID. This is only
-//     emitted when the button has a server-side Event action; a FunctionCall-
-//     only button produces no ClientMessage (client-side functions are handled
-//     by the host, not round-tripped to the agent).
+//     ActionEvent carries Name, SurfaceID, SourceComponentID, and Context.
+//     Context is populated from gatherFieldValues, so typed text field edits
+//     flow through. This is only emitted when the button has a server-side
+//     Event action.
 //
 // The ActionEvent.Timestamp is left empty for the host to stamp. Calling
 // time.Now here would make Update non-deterministic and break golden tests.
@@ -209,7 +219,19 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		s.focusIdx = (s.focusIdx - 1 + len(s.focusables)) % len(s.focusables)
 	case "enter":
-		return s, s.activate()
+		// Enter only activates buttons; on a text field it is a no-op.
+		if s.focusedIsButton() {
+			return s, s.activate()
+		}
+	case "backspace":
+		if s.focusedIsTextField() {
+			s.deleteRune()
+		}
+	default:
+		// Rune key presses edit the focused text field.
+		if s.focusedIsTextField() && key.Mod == 0 && key.Code != 0 {
+			s.appendRune(key.Code)
+		}
 	}
 	return s, nil
 }
@@ -232,12 +254,9 @@ func (s *Surface) activate() tea.Cmd {
 	id := s.focusables[s.focusIdx]
 	c, ok := s.byID[id]
 	if !ok || c.Button == nil {
-		return func() tea.Msg {
-			return event.ButtonClicked{
-				Source: event.Source{ComponentID: id, SurfaceID: s.id},
-				ID:     id,
-			}
-		}
+		// Not a button — nothing to activate. This path should not be
+		// reached (Update guards enter for non-buttons) but is defensive.
+		return nil
 	}
 
 	// Resolve the server-side event action, if any.
@@ -292,9 +311,85 @@ func (s *Surface) View() tea.View {
 }
 
 // isFocused reports whether the component with the given ID currently holds
-// button focus (surface focused AND it is the selected focusable).
+// focus (surface focused AND it is the selected focusable).
 func (s *Surface) isFocused(id string) bool {
 	return s.Focused() && len(s.focusables) > 0 && s.focusables[s.focusIdx] == id
+}
+
+// Focusables returns the IDs of interactive components (buttons and text
+// fields) in depth-first focus-ring order. The host can use this to inspect
+// the focus ring; it is mainly intended for testing.
+func (s *Surface) Focusables() []string {
+	return s.focusables
+}
+
+// focusedComponent returns the component at the current focus index, or a
+// zero Component when the focus ring is empty.
+func (s *Surface) focusedComponent() a2ui.Component {
+	if len(s.focusables) == 0 {
+		return a2ui.Component{}
+	}
+	return s.byID[s.focusables[s.focusIdx]]
+}
+
+// focusedIsButton reports whether the currently focused component is a Button.
+func (s *Surface) focusedIsButton() bool {
+	c := s.focusedComponent()
+	return c.Button != nil
+}
+
+// focusedIsTextField reports whether the currently focused component is a
+// TextField.
+func (s *Surface) focusedIsTextField() bool {
+	c := s.focusedComponent()
+	return c.TextField != nil
+}
+
+// appendRune appends a rune to the focused text field's edited value,
+// lazily initializing the fieldValues map on first edit. On the first edit,
+// the field's current display value (literal or binding placeholder) is used
+// as the starting point so typed characters extend the existing text.
+func (s *Surface) appendRune(r rune) {
+	id := s.focusables[s.focusIdx]
+	if s.fieldValues == nil {
+		s.fieldValues = make(map[string]string)
+	}
+	// Seed with the current literal value on first edit so typed characters
+	// extend the existing text rather than replacing it.
+	if _, ok := s.fieldValues[id]; !ok {
+		c := s.byID[id]
+		if c.TextField != nil && c.TextField.Value != nil {
+			s.fieldValues[id] = s.dynString(*c.TextField.Value)
+		}
+	}
+	s.fieldValues[id] += string(r)
+}
+
+// deleteRune removes the last rune from the focused text field's edited
+// value. If the value drops back to the field's original literal, the key is
+// deleted so rendering falls back to the static literal.
+func (s *Surface) deleteRune() {
+	id := s.focusables[s.focusIdx]
+	if s.fieldValues == nil {
+		return
+	}
+	v, ok := s.fieldValues[id]
+	if !ok || len(v) == 0 {
+		return
+	}
+	runes := []rune(v)
+	v = string(runes[:len(runes)-1])
+	// If the edited value matches the original literal, drop the key so
+	// rendering falls back to the static value.
+	literal := ""
+	if c := s.byID[id]; c.TextField != nil && c.TextField.Value != nil {
+		literal = s.dynString(*c.TextField.Value)
+	}
+	if v == literal {
+		delete(s.fieldValues, id)
+	} else {
+		s.fieldValues[id] = v
+	}
 }
 
 // compact reports whether the surface should render in compact mode. When an
@@ -315,8 +410,8 @@ func (s *Surface) compact() bool {
 }
 
 // collectFocusables walks the tree from the root and returns the IDs of
-// interactive components (buttons) in depth-first order. A component
-// referenced by more than one parent (legal adjacency-list reuse) is
+// interactive components (buttons and text fields) in depth-first order. A
+// component referenced by more than one parent (legal adjacency-list reuse) is
 // collected once — it is one interactive element however many times it is
 // drawn.
 func (s *Surface) collectFocusables() []string {
@@ -333,7 +428,7 @@ func (s *Surface) collectFocusables() []string {
 		if !ok {
 			return
 		}
-		if c.Button != nil && !collected[c.ID] {
+		if (c.Button != nil || c.TextField != nil) && !collected[c.ID] {
 			collected[c.ID] = true
 			out = append(out, c.ID)
 		}

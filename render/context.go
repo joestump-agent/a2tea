@@ -9,23 +9,30 @@ import a2ui "github.com/tmc/a2ui"
 //
 // Value types match the component kind so the host and agent see a consistent
 // shape: TextField → string, ChoicePicker → []string, CheckBox → bool.
-// Slider and DateTimeInput are omitted — they are not yet editable (#15) and
+// Slider and DateTimeInput are omitted — they are not yet editable and
 // their readout is speculative.
 //
-// Only literal values are resolved. Binding and FunctionCall DynamicX values
-// are skipped because the data model is not applied yet; the host should
-// resolve these from its own state.
+// For TextFields, an edited value (from fieldValues) shadows the component's
+// static literal. Only literal values are resolved for other component types;
+// binding and FunctionCall DynamicX values are skipped because the data model
+// is not applied yet; the host should resolve these from its own state.
 func (s *Surface) gatherFieldValues() map[string]any {
 	ctx := make(map[string]any)
 	for _, c := range s.byID {
 		switch {
-		case c.TextField != nil && c.TextField.Value != nil:
-			// Include the field whenever its value is a literal — even an
-			// empty string, which is a meaningful "the user cleared this"
-			// signal the host must be able to tell apart from an absent
-			// field. Bindings resolve to nil and are skipped.
-			if v := resolveDynamicString(*c.TextField.Value); v != nil {
-				ctx[c.ID] = *v
+		case c.TextField != nil:
+			// Edited value shadows the literal.
+			if s.fieldValues != nil {
+				if v, ok := s.fieldValues[c.ID]; ok {
+					ctx[c.ID] = v
+					continue
+				}
+			}
+			// Fall back to the static literal.
+			if c.TextField.Value != nil {
+				if v := resolveDynamicString(*c.TextField.Value); v != nil {
+					ctx[c.ID] = *v
+				}
 			}
 		case c.ChoicePicker != nil:
 			if v := resolveDynamicStringList(c.ChoicePicker.Value); v != nil {
@@ -38,6 +45,18 @@ func (s *Surface) gatherFieldValues() map[string]any {
 		}
 	}
 	return ctx
+}
+
+// FieldValues returns the current values of all input components on the
+// surface, keyed by component ID. It is the host's read-on-submit API: after
+// a button click (or at any time), the host calls FieldValues to read what
+// the user typed.
+//
+// The returned map has the same structure as gatherFieldValues: TextField →
+// string (edited value or literal), ChoicePicker → []string, CheckBox → bool.
+// The returned map is a copy; mutating it does not affect the surface.
+func (s *Surface) FieldValues() map[string]any {
+	return s.gatherFieldValues()
 }
 
 // resolveDynamicValue converts a DynamicValue to a concrete Go value.

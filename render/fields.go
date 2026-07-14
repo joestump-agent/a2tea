@@ -39,17 +39,30 @@ func dynNumString(d a2ui.DynamicNumber) string {
 }
 
 // renderTextField renders a TextField: a caption label line, then the value
-// behind a "▏" input cue. A nil or empty value renders a faint "(empty)".
+// behind a "▏" input cue. When the user has typed into this field, the edited
+// value (from fieldValues) is shown instead of the static literal. A focused
+// text field shows a cursor block "▎" at the end of the value. A nil or empty
+// value renders a faint "(empty)".
 func (s *Surface) renderTextField(c a2ui.Component) string {
 	tf := c.TextField
 	value := ""
-	if tf.Value != nil {
+	// Edited value shadows the static literal.
+	if s.fieldValues != nil {
+		if v, ok := s.fieldValues[c.ID]; ok {
+			value = v
+		}
+	}
+	if value == "" && tf.Value != nil {
 		value = s.dynString(*tf.Value)
 	}
 	if value == "" {
 		value = s.styles.Caption.Render("(empty)")
 	}
-	return wrapTo(s.labeled(s.dynString(tf.Label), "▏"+value), s.width)
+	cue := "▏"
+	if s.isFocused(c.ID) {
+		cue = "▎"
+	}
+	return wrapTo(s.labeled(s.dynString(tf.Label), cue+value), s.width)
 }
 
 // renderCheckBox renders a CheckBox as "[x] label" when the value's literal

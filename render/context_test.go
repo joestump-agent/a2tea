@@ -12,8 +12,8 @@ import (
 )
 
 // activateButtonCtx wraps comps in a Column root so the button is reachable
-// from the focus ring, then focuses the surface and sends Enter to the
-// focused button (index 0). Activation emits a batch; this pulls the native
+// from the focus ring, then focuses the surface, tabs to the button, and
+// sends Enter. Activation emits a batch; this pulls the native
 // a2ui.ClientMessage out of it and returns its ActionEvent.Context.
 func activateButtonCtx(t *testing.T, comps []a2ui.Component) map[string]any {
 	t.Helper()
@@ -27,12 +27,19 @@ func activateButtonCtx(t *testing.T, comps []a2ui.Component) map[string]any {
 	}
 	s := render.NewSurface("surf1", append([]a2ui.Component{root}, comps...))
 	s.Focus()
-	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	cm := findMsg[a2ui.ClientMessage](t, collectMsgs(t, cmd))
-	if cm.Action == nil {
-		t.Fatal("ClientMessage.Action is nil")
+	// Tab to the first button in the focus ring. The ring now includes
+	// TextFields, so the first focusable may not be the button.
+	for range s.Focusables() {
+		if _, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
+			cm := findMsg[a2ui.ClientMessage](t, collectMsgs(t, cmd))
+			if cm.Action != nil {
+				return cm.Action.Context
+			}
+		}
+		s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	}
-	return cm.Action.Context
+	t.Fatal("no button found in focus ring")
+	return nil
 }
 
 func textInput(id, val string) a2ui.Component {
