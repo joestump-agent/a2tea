@@ -66,6 +66,40 @@ func WithStyles(st Styles) Option {
 	return func(s *Surface) { s.styles = st }
 }
 
+// compactWidthThreshold is the default width below which the surface switches
+// to compact rendering: cards drop borders, rows stack vertically. Widths of 0
+// (unconstrained) or >= threshold use the normal rendering path.
+const compactWidthThreshold = 40
+
+// compactOverride is the tri-state result of an explicit WithCompact option.
+type compactOverride int
+
+const (
+	compactAuto    compactOverride = iota // decide from width
+	compactForce                          // WithCompact(true)
+	compactDisable                        // WithCompact(false)
+)
+
+// WithCompact forces compact rendering on or off, overriding the automatic
+// width-based detection. WithCompact(true) activates compact mode even at wide
+// widths; WithCompact(false) keeps the normal path even below the threshold.
+func WithCompact(on bool) Option {
+	return func(s *Surface) {
+		if on {
+			s.compactOverride = compactForce
+		} else {
+			s.compactOverride = compactDisable
+		}
+	}
+}
+
+// WithCompactThreshold overrides the width below which compact rendering
+// activates automatically. It has no effect when WithCompact has set an
+// explicit override.
+func WithCompactThreshold(w int) Option {
+	return func(s *Surface) { s.compactThreshold = w }
+}
+
 // Surface renders one A2UI surface: the component set from an updateComponents
 // message, walked as a tree starting from its root.
 type Surface struct {
@@ -86,6 +120,14 @@ type Surface struct {
 	// depth-first tree order; focusIdx points at the one holding focus.
 	focusables []string
 	focusIdx   int
+
+	// compactOverride controls whether compact rendering is forced on,
+	// forced off, or decided automatically from the surface width.
+	compactOverride compactOverride
+
+	// compactThreshold is the width below which compact rendering activates
+	// automatically. Defaults to compactWidthThreshold.
+	compactThreshold int
 }
 
 // NewSurface indexes components by ID and picks the surface root: the single
@@ -104,10 +146,11 @@ func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *
 		byID[c.ID] = c
 	}
 	s := &Surface{
-		id:     surfaceID,
-		byID:   byID,
-		rootID: rootID(components),
-		styles: DefaultStyles(),
+		id:               surfaceID,
+		byID:             byID,
+		rootID:           rootID(components),
+		styles:           DefaultStyles(),
+		compactThreshold: compactWidthThreshold,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -237,6 +280,22 @@ func (s *Surface) View() tea.View {
 // button focus (surface focused AND it is the selected focusable).
 func (s *Surface) isFocused(id string) bool {
 	return s.Focused() && len(s.focusables) > 0 && s.focusables[s.focusIdx] == id
+}
+
+// compact reports whether the surface should render in compact mode. When an
+// explicit override is set via WithCompact it wins; otherwise compact mode
+// activates automatically when the surface has a non-zero width below the
+// threshold. Width 0 (unconstrained) and width >= threshold use the normal
+// rendering path.
+func (s *Surface) compact() bool {
+	switch s.compactOverride {
+	case compactForce:
+		return true
+	case compactDisable:
+		return false
+	default:
+		return s.width > 0 && s.width < s.compactThreshold
+	}
 }
 
 // collectFocusables walks the tree from the root and returns the IDs of

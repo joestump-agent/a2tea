@@ -24,10 +24,15 @@ func (s *Surface) renderColumn(c a2ui.Component, seen map[string]bool) string {
 }
 
 // renderRow renders a Row component: children joined horizontally, top-aligned,
-// with a two-space gap between adjacent children. Align and Justify are
-// ignored for now (see renderColumn).
+// with a two-space gap between adjacent children. In compact mode the children
+// fall back to vertical stacking (JoinVertical/Left) so they don't overflow a
+// narrow width budget. Align and Justify are ignored for now (see renderColumn).
 func (s *Surface) renderRow(c a2ui.Component, seen map[string]bool) string {
-	return joinRow(s.renderChildren(c.Row.Children, seen))
+	parts := s.renderChildren(c.Row.Children, seen)
+	if s.compact() {
+		return lipgloss.JoinVertical(lipgloss.Left, parts...)
+	}
+	return joinRow(parts)
 }
 
 // renderList renders a List component. Vertical lists (the default when

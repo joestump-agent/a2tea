@@ -11,7 +11,16 @@ import a2ui "github.com/tmc/a2ui"
 // When unconstrained (s.width == 0) the box sizes to its content. A budget
 // below 5 cells cannot be honored — the chrome alone costs 4 — so the child
 // is clamped to a 1-cell column and the box renders at its 5-cell minimum.
+//
+// In compact mode (see Surface.compact) the border and padding are dropped
+// entirely; the child renders directly under the full width budget. This keeps
+// the card's content readable in narrow host panels (e.g. the crush sidebar)
+// where the 4-cell border chrome would otherwise consume too much of the
+// available width.
 func (s *Surface) renderCard(c a2ui.Component, seen map[string]bool) string {
+	if s.compact() {
+		return s.renderComponent(c.Card.Child, seen)
+	}
 	if s.width <= 0 {
 		return s.styles.CardBorder.Render(s.renderComponent(c.Card.Child, seen))
 	}
