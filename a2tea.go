@@ -18,6 +18,7 @@ package a2tea
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	a2ui "github.com/tmc/a2ui"
@@ -39,10 +40,52 @@ type Part struct {
 	Messages []a2ui.ServerMessage
 }
 
-// Contains reports whether s contains at least one complete A2UI message block,
-// so a host can cheaply decide whether to take the Scan path at all.
+// Contains reports whether s contains at least one A2UI message, so a host
+// can cheaply decide whether to take the Scan path at all. It detects both
+// <a2ui-json>-tagged blocks and bare A2UI JSON objects — the same forms Scan
+// parses, so Contains and Scan always agree.
+//
+// The check is two-stage: a cheap literal probe for A2UI's message keys,
+// then — only on a probe hit — a real parse to confirm. Ordinary prose never
+// pays the parse cost, and prose that merely mentions a key without valid
+// A2UI JSON does not false-positive.
 func Contains(s string) bool {
-	return a2uistream.HasParts(s)
+	if a2uistream.HasParts(s) {
+		return true
+	}
+	if !mentionsA2UIKey(s) {
+		return false
+	}
+	parts, err := a2uistream.ParseAndValidate(s, nil)
+	if err != nil {
+		return false
+	}
+	for _, p := range parts {
+		if len(p.Messages) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// a2uiMessageKeys are the quoted JSON keys naming the A2UI v0.9 server
+// message types. A bare A2UI JSON object necessarily contains one of these,
+// so a reply without any of them cannot contain an untagged message.
+var a2uiMessageKeys = []string{
+	`"createSurface"`,
+	`"updateComponents"`,
+	`"updateDataModel"`,
+	`"deleteSurface"`,
+}
+
+// mentionsA2UIKey is the cheap first-stage probe used by Contains.
+func mentionsA2UIKey(s string) bool {
+	for _, k := range a2uiMessageKeys {
+		if strings.Contains(s, k) {
+			return true
+		}
+	}
+	return false
 }
 
 // Scan splits an LLM response into ordered parts of text and A2UI messages. It
