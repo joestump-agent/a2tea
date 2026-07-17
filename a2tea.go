@@ -152,8 +152,9 @@ func Render(msgs []a2ui.ServerMessage, opts ...render.Option) (tea.Model, error)
 }
 
 // Standalone wraps a renderer so it can run as its own tea.Program. It owns the
-// two responsibilities a renderer deliberately does not: it quits on Ctrl+C, q,
-// or Esc, and it forwards terminal-size changes to the child via SetSize. Hosts
+// two responsibilities a renderer deliberately does not: it quits on Ctrl+C or
+// Esc (and on q, unless the child reports it is editing a text field — then q
+// is typed), and it forwards terminal-size changes to the child via SetSize. Hosts
 // that embed a renderer inside a larger TUI do NOT use this — they own quit and
 // lay out the child themselves. Standalone exists for examples and manual
 // testing of a single surface.
@@ -179,6 +180,12 @@ type focuser interface {
 	Focus() tea.Cmd
 }
 
+// editingTexter is the optional probe Standalone uses to decide whether "q"
+// is a quit command or text input. render.Surface implements it.
+type editingTexter interface {
+	EditingText() bool
+}
+
 func (m standaloneModel) Init() tea.Cmd {
 	cmd := m.child.Init()
 	if f, ok := m.child.(focuser); ok {
@@ -195,7 +202,15 @@ func (m standaloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "ctrl+c", "q", "esc":
+		case "ctrl+c", "esc":
+			return m, tea.Quit
+		case "q":
+			// "q" quits only when it isn't text input: if the child reports
+			// it is editing a text field, forward the key so the user can
+			// type the letter q.
+			if e, ok := m.child.(editingTexter); ok && e.EditingText() {
+				break
+			}
 			return m, tea.Quit
 		}
 	}

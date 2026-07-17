@@ -32,6 +32,7 @@ package action
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -56,7 +57,14 @@ type Handler func(ev a2ui.ActionEvent) (tea.Cmd, error)
 
 // Dispatcher routes inbound ActionEvents to registered handlers by Name,
 // refusing any name outside the registered vocabulary.
+//
+// Dispatcher is safe for concurrent use: Register and Dispatch may be called
+// from different goroutines (e.g. Dispatch from inside a tea.Cmd). Handlers
+// themselves run outside the Dispatcher's lock, so a handler may re-enter
+// the Dispatcher without deadlocking; handler bodies are still host-owned
+// and must handle their own synchronization.
 type Dispatcher struct {
+	mu       sync.RWMutex
 	handlers map[string]Handler
 }
 
@@ -77,6 +85,8 @@ func (d *Dispatcher) Register(name string, h Handler) error {
 	if h == nil {
 		return fmt.Errorf("action: nil handler for %q", name)
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if _, exists := d.handlers[name]; exists {
 		return fmt.Errorf("%w: %q", ErrDuplicateHandler, name)
 	}
@@ -88,10 +98,13 @@ func (d *Dispatcher) Register(name string, h Handler) error {
 // registered for ev.Name, it returns an [ErrNoHandler] error wrapping the name
 // and invokes nothing — this is the closed-vocabulary guarantee.
 func (d *Dispatcher) Dispatch(ev a2ui.ActionEvent) (tea.Cmd, error) {
+	d.mu.RLock()
 	h, ok := d.handlers[ev.Name]
+	d.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrNoHandler, ev.Name)
 	}
+	// The handler runs outside the lock so it may re-enter the Dispatcher.
 	return h(ev)
 }
 

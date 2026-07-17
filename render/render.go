@@ -354,24 +354,54 @@ func (s *Surface) focusedIsTextField() bool {
 	return c.TextField != nil
 }
 
+// EditingText reports whether the surface holds focus on an editable text
+// field, i.e. printable key presses are currently text input rather than
+// commands. Hosts (and a2tea.Standalone) use this to decide whether keys
+// like "q" should quit or be typed.
+func (s *Surface) EditingText() bool {
+	return s.Focused() && s.focusedIsTextField()
+}
+
+// editSeed returns the text an edit of the given TextField starts from: its
+// literal value, or its binding's resolved data-model value, or "" when the
+// value is absent or unresolved. A display placeholder like "{binding}" or
+// "{fn}" is rendering chrome, not field content — it must never leak into
+// edits, FieldValues, or the ActionEvent.Context round-tripped to the agent.
+func (s *Surface) editSeed(id string) string {
+	c, ok := s.byID[id]
+	if !ok || c.TextField == nil || c.TextField.Value == nil {
+		return ""
+	}
+	d := *c.TextField.Value
+	switch {
+	case d.Literal != nil:
+		return *d.Literal
+	case d.Binding != nil:
+		if s.data != nil {
+			if v, ok := s.data[strings.TrimPrefix(d.Binding.Path, "/")]; ok {
+				if str, ok := v.(string); ok {
+					return str
+				}
+				return fmt.Sprintf("%v", v)
+			}
+		}
+	}
+	return ""
+}
+
 // appendText appends printable text to the focused text field's edited value,
 // lazily initializing the fieldValues map on first edit. On the first edit,
-// the field's current display value (literal or binding placeholder) is used
-// as the starting point so typed characters extend the existing text. The
-// argument is key.Text — the characters the key produced — which may be more
-// than one rune (composed/IME input) and already reflects Shift.
+// the field's current content (literal or resolved binding, via editSeed) is
+// used as the starting point so typed characters extend the existing text.
+// The argument is key.Text — the characters the key produced — which may be
+// more than one rune (composed/IME input) and already reflects Shift.
 func (s *Surface) appendText(text string) {
 	id := s.focusables[s.focusIdx]
 	if s.fieldValues == nil {
 		s.fieldValues = make(map[string]string)
 	}
-	// Seed with the current literal value on first edit so typed characters
-	// extend the existing text rather than replacing it.
 	if _, ok := s.fieldValues[id]; !ok {
-		c := s.byID[id]
-		if c.TextField != nil && c.TextField.Value != nil {
-			s.fieldValues[id] = s.dynString(*c.TextField.Value)
-		}
+		s.fieldValues[id] = s.editSeed(id)
 	}
 	s.fieldValues[id] += text
 }
@@ -383,10 +413,7 @@ func (s *Surface) appendText(text string) {
 // literal, the key is deleted so rendering falls back to the static literal.
 func (s *Surface) deleteRune() {
 	id := s.focusables[s.focusIdx]
-	literal := ""
-	if c := s.byID[id]; c.TextField != nil && c.TextField.Value != nil {
-		literal = s.dynString(*c.TextField.Value)
-	}
+	literal := s.editSeed(id)
 	if s.fieldValues == nil {
 		s.fieldValues = make(map[string]string)
 	}

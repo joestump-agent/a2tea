@@ -2,6 +2,8 @@ package action_test
 
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -219,4 +221,30 @@ func TestAccessorNilContext(t *testing.T) {
 	if ok || b != false {
 		t.Fatalf("Bool on nil Context = (%v, %v), want (false, false)", b, ok)
 	}
+}
+
+// TestDispatcherConcurrentUse verifies Register and Dispatch are safe to
+// call from multiple goroutines (run with -race).
+func TestDispatcherConcurrentUse(t *testing.T) {
+	d := action.NewDispatcher()
+	if err := d.Register("seed", func(ev a2ui.ActionEvent) (tea.Cmd, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(2)
+		name := fmt.Sprintf("h%d", i)
+		go func() {
+			defer wg.Done()
+			_ = d.Register(name, func(ev a2ui.ActionEvent) (tea.Cmd, error) { return nil, nil })
+		}()
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				_, _ = d.Dispatch(a2ui.ActionEvent{Name: "seed"})
+			}
+		}()
+	}
+	wg.Wait()
 }
