@@ -352,3 +352,66 @@ func TestEditingDoesNotAffectOtherField(t *testing.T) {
 		t.Fatalf("f2 = %v, want %q", vals["f2"], "twoY")
 	}
 }
+
+// TestEditingBoundFieldDoesNotLeakPlaceholder verifies that typing into a
+// TextField whose value is an unresolved data-model binding starts from an
+// empty seed — the "{binding}" display placeholder must not leak into
+// FieldValues (and from there into ActionEvent.Context).
+func TestEditingBoundFieldDoesNotLeakPlaceholder(t *testing.T) {
+	bound := a2ui.StringBinding("/name")
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"f"}}}},
+		{ID: "f", TextField: &a2ui.TextFieldComponent{Value: &bound}},
+	}
+	s := render.NewSurface("s", comps)
+	s.Focus()
+
+	s.Update(typeKey('X'))
+
+	vals := s.FieldValues()
+	if got := vals["f"].(string); got != "X" {
+		t.Fatalf("FieldValues[f] = %q, want %q (placeholder leaked into edit seed)", got, "X")
+	}
+}
+
+// TestEditingResolvedBoundFieldSeedsFromDataModel verifies that when the
+// binding IS resolved in the data model, editing extends the resolved value.
+func TestEditingResolvedBoundFieldSeedsFromDataModel(t *testing.T) {
+	bound := a2ui.StringBinding("/name")
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"f"}}}},
+		{ID: "f", TextField: &a2ui.TextFieldComponent{Value: &bound}},
+	}
+	s := render.NewSurface("s", comps)
+	s.Apply([]a2ui.ServerMessage{
+		{UpdateDataModel: &a2ui.UpdateDataModel{SurfaceID: "s", Path: "/name", Value: "Bob"}},
+	})
+	s.Focus()
+
+	s.Update(typeKey('X'))
+
+	vals := s.FieldValues()
+	if got := vals["f"].(string); got != "BobX" {
+		t.Fatalf("FieldValues[f] = %q, want %q (resolved binding should seed the edit)", got, "BobX")
+	}
+}
+
+// TestBackspaceOnUnresolvedBoundFieldIsNoOp verifies backspace on a bound
+// field with no resolved value does nothing (there is no real text to
+// delete — the placeholder is not content).
+func TestBackspaceOnUnresolvedBoundFieldIsNoOp(t *testing.T) {
+	bound := a2ui.StringBinding("/name")
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"f"}}}},
+		{ID: "f", TextField: &a2ui.TextFieldComponent{Value: &bound}},
+	}
+	s := render.NewSurface("s", comps)
+	s.Focus()
+
+	s.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+
+	vals := s.FieldValues()
+	if got, ok := vals["f"]; ok && got != "" {
+		t.Fatalf("FieldValues[f] = %v after backspace on unresolved binding, want empty/absent", got)
+	}
+}

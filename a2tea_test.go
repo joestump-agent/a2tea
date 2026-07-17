@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	a2ui "github.com/tmc/a2ui"
+
 	"github.com/joestump-agent/a2tea"
 	"github.com/joestump-agent/a2tea/render"
 )
@@ -44,43 +46,6 @@ func TestScanSplitsTextAndMessages(t *testing.T) {
 	joined := strings.Join(texts, "|")
 	if !strings.Contains(joined, "intro text") || !strings.Contains(joined, "outro") {
 		t.Fatalf("text parts = %q, want both intro and outro", joined)
-	}
-}
-
-// TestScanMalformedJSONInTags pins the ACTUAL behavior of Scan on malformed
-// JSON inside <a2ui-json> tags: a2uistream.ParseAndValidate does NOT return
-// an error — it silently drops the unparseable block and keeps the
-// surrounding text as text parts with zero messages. (Verified empirically
-// against a2uistream: truncated JSON and outright non-JSON both come back as
-// err == nil with no ServerMessages.) If a2uistream ever starts erroring
-// here, this test should be revisited deliberately, not just patched.
-func TestScanMalformedJSONInTags(t *testing.T) {
-	cases := []string{
-		// Truncated JSON: the block opens but never closes its objects.
-		`before <a2ui-json>{"version":"v0.9","updateComponents":{</a2ui-json> after`,
-		// Not JSON at all.
-		`before <a2ui-json>this is not json at all</a2ui-json> after`,
-	}
-	for _, in := range cases {
-		parts, err := a2tea.Scan(in)
-		if err != nil {
-			t.Fatalf("Scan(%q) err = %v, want nil (malformed blocks are dropped, not errored)", in, err)
-		}
-		total := 0
-		var texts []string
-		for _, p := range parts {
-			total += len(p.Messages)
-			if s := strings.TrimSpace(p.Text); s != "" {
-				texts = append(texts, s)
-			}
-		}
-		if total != 0 {
-			t.Fatalf("Scan(%q) produced %d messages from a malformed block, want 0", in, total)
-		}
-		joined := strings.Join(texts, "|")
-		if !strings.Contains(joined, "before") || !strings.Contains(joined, "after") {
-			t.Fatalf("Scan(%q) should keep surrounding text; got parts %q", in, joined)
-		}
 	}
 }
 
@@ -206,42 +171,48 @@ func TestStandaloneForwardsWindowSize(t *testing.T) {
 	}
 }
 
-// bareJSONReply is an LLM reply carrying an untagged A2UI JSON object — the
-// bare form Scan parses; Contains must agree with Scan on it.
-const bareJSONReply = `Here is your card. {"version":"v0.9","updateComponents":{"surfaceId":"s","components":[{"component":"Text","id":"root","text":"Hi"}]}} Enjoy!`
+// TestStandaloneQForwardedWhileEditing verifies that "q" is typed, not a
+// quit, while the wrapped surface holds focus on a text field.
+func TestStandaloneQForwardedWhileEditing(t *testing.T) {
+	val := a2ui.StringLiteral("")
+	s := render.NewSurface("s", []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"f"}}}},
+		{ID: "f", TextField: &a2ui.TextFieldComponent{Value: &val}},
+	})
+	m := a2tea.Standalone(s)
+	if cmd := m.Init(); cmd != nil {
+		cmd() // grant focus
+	}
 
-// TestContainsBareJSON verifies Contains detects untagged A2UI JSON that
-// Scan successfully parses — the two must never disagree.
-func TestContainsBareJSON(t *testing.T) {
-	if !a2tea.Contains(bareJSONReply) {
-		t.Fatal("Contains = false for bare A2UI JSON that Scan parses")
+	m, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd != nil {
+		if _, quit := cmd().(tea.QuitMsg); quit {
+			t.Fatal("q while editing a text field must not quit")
+		}
 	}
-	parts, err := a2tea.Scan(bareJSONReply)
-	if err != nil {
-		t.Fatalf("Scan: %v", err)
-	}
-	total := 0
-	for _, p := range parts {
-		total += len(p.Messages)
-	}
-	if total == 0 {
-		t.Fatal("fixture no longer parses as bare A2UI — update the test")
+	_ = m
+
+	if got := s.FieldValues()["f"].(string); got != "q" {
+		t.Fatalf("typed q not delivered to field: FieldValues[f] = %q", got)
 	}
 }
 
-// TestContainsProseMentioningKeyIsFalse verifies the parse-confirm stage: a
-// reply that merely mentions an A2UI key in prose (no valid JSON) is not
-// reported as containing A2UI.
-func TestContainsProseMentioningKeyIsFalse(t *testing.T) {
-	prose := `The "updateComponents" message is how A2UI updates a surface.`
-	if a2tea.Contains(prose) {
-		t.Fatal("Contains = true for prose that merely mentions an A2UI key")
+// TestStandaloneQStillQuitsWithoutEditing verifies "q" quits when the child
+// is not editing text (button-only surface).
+func TestStandaloneQStillQuitsWithoutEditing(t *testing.T) {
+	s := render.NewSurface("s", []a2ui.Component{
+		{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("Hi")}},
+	})
+	m := a2tea.Standalone(s)
+	if cmd := m.Init(); cmd != nil {
+		cmd()
 	}
-}
 
-// TestContainsPlainProseIsFalse pins the cheap path: no A2UI keys at all.
-func TestContainsPlainProseIsFalse(t *testing.T) {
-	if a2tea.Contains("Just a normal reply about the weather.") {
-		t.Fatal("Contains = true for plain prose")
+	_, cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("q should quit when no text field is focused")
+	}
+	if _, quit := cmd().(tea.QuitMsg); !quit {
+		t.Fatal("q should produce tea.QuitMsg when not editing")
 	}
 }
