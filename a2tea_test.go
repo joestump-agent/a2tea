@@ -168,3 +168,43 @@ func TestStandaloneForwardsWindowSize(t *testing.T) {
 		t.Fatalf("child size = (%d,%d), want (120,40)", spy.w, spy.h)
 	}
 }
+
+// bareJSONReply is an LLM reply carrying an untagged A2UI JSON object — the
+// bare form Scan parses; Contains must agree with Scan on it.
+const bareJSONReply = `Here is your card. {"version":"v0.9","updateComponents":{"surfaceId":"s","components":[{"component":"Text","id":"root","text":"Hi"}]}} Enjoy!`
+
+// TestContainsBareJSON verifies Contains detects untagged A2UI JSON that
+// Scan successfully parses — the two must never disagree.
+func TestContainsBareJSON(t *testing.T) {
+	if !a2tea.Contains(bareJSONReply) {
+		t.Fatal("Contains = false for bare A2UI JSON that Scan parses")
+	}
+	parts, err := a2tea.Scan(bareJSONReply)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	total := 0
+	for _, p := range parts {
+		total += len(p.Messages)
+	}
+	if total == 0 {
+		t.Fatal("fixture no longer parses as bare A2UI — update the test")
+	}
+}
+
+// TestContainsProseMentioningKeyIsFalse verifies the parse-confirm stage: a
+// reply that merely mentions an A2UI key in prose (no valid JSON) is not
+// reported as containing A2UI.
+func TestContainsProseMentioningKeyIsFalse(t *testing.T) {
+	prose := `The "updateComponents" message is how A2UI updates a surface.`
+	if a2tea.Contains(prose) {
+		t.Fatal("Contains = true for prose that merely mentions an A2UI key")
+	}
+}
+
+// TestContainsPlainProseIsFalse pins the cheap path: no A2UI keys at all.
+func TestContainsPlainProseIsFalse(t *testing.T) {
+	if a2tea.Contains("Just a normal reply about the weather.") {
+		t.Fatal("Contains = true for plain prose")
+	}
+}
