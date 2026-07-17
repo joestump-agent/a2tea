@@ -3,19 +3,8 @@ package event_test
 import (
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/joestump-agent/a2tea/event"
 )
-
-// TestEventsAreMessages pins that every event type is usable as a tea.Msg, so
-// they flow through the standard bubbletea Update loop.
-func TestEventsAreMessages(t *testing.T) {
-	var _ tea.Msg = event.ButtonClicked{}
-	var _ tea.Msg = event.InputSubmitted{}
-	var _ tea.Msg = event.ChoiceSelected{}
-	var _ tea.Msg = event.FormSubmitted{}
-}
 
 // TestSourceContext pins the Source fields on every event — the shape agents
 // use to disambiguate interactions from multiple on-screen components.

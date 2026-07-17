@@ -81,22 +81,29 @@ run a single surface on its own for examples and manual testing.
 ## Roadmap
 
 The core catalog renders for real with `charm.land/lipgloss/v2` (see above).
+The message lifecycle is applied in order — `updateComponents` composites by
+component ID, `updateDataModel` resolves `DynamicString` bindings,
+`deleteSurface` clears the surface — `TextField` is editable (typed edits
+update state and flow into `ActionEvent.Context`), and button activation sends
+a protocol-native `a2ui.ClientMessage` back to the agent with `Name`,
+`SurfaceID`, `SourceComponentID`, and a populated `Context`.
+
 What is **not** yet implemented:
 
-- **Data model.** `DynamicString` bindings/function calls render as
-  `{binding}` / `{fn}`; `updateDataModel` is not applied.
-- **Editable inputs.** `TextField`/`CheckBox`/`ChoicePicker`/`Slider`/
-  `DateTimeInput` are read-only visuals — they draw current values but never
-  mutate field state or emit input events.
-- **Surface lifecycle.** Only the latest `updateComponents` is drawn;
-  `createSurface` theming/catalog, `deleteSurface`, multi-surface compositing,
-  and `ChildList` templates are not handled.
-- **Full interaction round-trip.** `event.ButtonClicked` is the only event
-  emitted; `InputSubmitted`/`ChoiceSelected`/`FormSubmitted` are defined but
-  unused, and A2UI `Action`/`ClientMessage` events are not yet sent back to
-  the agent.
-- **Tab switching and modal interaction.** The first tab is always active,
-  and a modal renders only its trigger — its content stays hidden.
+- **`ChildList` templates.** Children resolve from explicit ID lists only;
+  the dynamic template form is not expanded.
+- **`createSurface` theming/catalog.** The message is ignored — a surface is
+  established by its first `updateComponents`, and theme/catalog payloads are
+  not applied.
+- **Tab switching.** Tabs are not focusable — the first tab is always the
+  active one.
+- **Modal content.** A modal renders only its trigger; its content stays
+  hidden.
+- **Editing beyond `TextField`.** `CheckBox`/`ChoicePicker`/`Slider`/
+  `DateTimeInput` remain read-only visuals.
+- **The remaining host-facing events.** `InputSubmitted`/`ChoiceSelected` are
+  defined but never dispatched; `event.ButtonClicked` is the only host-facing
+  event emitted.
 
 ## Versioning
 

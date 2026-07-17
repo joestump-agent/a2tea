@@ -35,33 +35,43 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `Text` with its variant styles (h1–h3 heading, h4–h5 subheading, caption),
   `Card` in a rounded border, `Column`/`Row`/`List` layout, `Divider`, and
   styled focusable `Button`s.
-- Read-only visuals for the input components: `TextField`, `CheckBox`,
-  `ChoicePicker`, `Slider`, and `DateTimeInput` draw their current values.
+- Input components: `TextField` is editable — a focused field accepts typed
+  edits that update its state and flow into `ActionEvent.Context` — while
+  `CheckBox`, `ChoicePicker`, `Slider`, and `DateTimeInput` are read-only
+  visuals that draw their current values.
 - Compact placeholders for media (`Image`, `Icon`, `Video`, `AudioPlayer`);
   `Tabs` render their title bar plus the first tab's content; `Modal` renders
   only its trigger.
 - The first wired event: when the host focuses a surface, `Tab` / `Shift+Tab`
-  cycle its buttons and `Enter` activates the focused button. Activation emits
+  cycle its focusables (buttons and text fields) and `Enter` activates the
+  focused button. Activation emits
   `event.ButtonClicked` (carrying the resolved `*a2ui.EventAction`) and, when
   the button has a server-side `Action.Event`, a protocol-native
-  `a2ui.ClientMessage` whose `ActionEvent` carries `Name`, `SurfaceID`, and
-  `SourceComponentID`. `FunctionCall`-only buttons emit no `ClientMessage`.
+  `a2ui.ClientMessage` whose `ActionEvent` carries `Name`, `SurfaceID`,
+  `SourceComponentID`, and `Context`. `FunctionCall`-only buttons emit no
+  `ClientMessage`.
   The `ActionEvent.Timestamp` is left empty for the host to stamp.
 - Deliberately monochrome chrome (borders, bold, faint, reverse-video focus)
   so the host theme wins.
 
+Also implemented since earlier revisions of this doc:
+- The message lifecycle is composited in order: `updateComponents` merges
+  components by ID (siblings survive), `updateDataModel` sets bound values so
+  `DynamicString` bindings resolve (unresolved bindings/function calls still
+  render as `{binding}` / `{fn}` placeholders), and `deleteSurface` clears the
+  surface.
+- `ActionEvent.Context` is populated from the surface's input component
+  values, so typed `TextField` edits round-trip to the agent.
+
 **Not yet** (tracked as follow-ups)
-- The data model: `DynamicString` bindings/function calls render as
-  `{binding}` / `{fn}` placeholders; `updateDataModel` is not applied.
-- Editable inputs: the field renderers never mutate state or emit input
-  events.
-- Surface lifecycle across messages: only the latest `updateComponents` is
-  drawn; `createSurface` theming/catalog, `deleteSurface`, multi-surface
-  compositing, and `ChildList` templates are not handled.
-- The rest of the interaction round-trip: button activation now emits an
-  `a2ui.ClientMessage` with the `ActionEvent`, but the `ActionEvent.Context`
-  (gathering field values) is not populated yet (#20). The other event types
-  (`InputSubmitted`/`ChoiceSelected`/`FormSubmitted`) are defined but not
-  emitted.
-- Tab switching (the first tab is always active) and modal interaction (a
-  modal's content stays hidden).
+- `ChildList` templates: children resolve from explicit ID lists only; the
+  dynamic template form is not expanded.
+- `createSurface` theming/catalog: the message is ignored — a surface is
+  established by its first `updateComponents`, and theme/catalog payloads are
+  not applied.
+- Tab switching: tabs are not focusable, so the first tab is always active.
+- Modal content: a modal renders only its trigger; its content stays hidden.
+- Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
+  `DateTimeInput` remain read-only visuals.
+- The remaining host-facing event types: `InputSubmitted`/`ChoiceSelected`
+  are defined but never dispatched.

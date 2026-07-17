@@ -49,9 +49,15 @@ func (s *Surface) renderList(c a2ui.Component, seen map[string]bool) string {
 		}
 		return joinRow(parts)
 	}
+	// Narrow the child budget by the 2-cell "• " indent so bulleted lines
+	// still fit; when constrained, floor at 1 so a width of 1-2 doesn't
+	// leave children with a zero (= unconstrained) budget and overflow.
 	childWidth := s.width
-	if childWidth > 2 {
+	if childWidth > 0 {
 		childWidth -= 2
+		if childWidth < 1 {
+			childWidth = 1
+		}
 	}
 	parts := s.withWidthParts(childWidth, c.List.Children, seen)
 	if len(parts) == 0 {
