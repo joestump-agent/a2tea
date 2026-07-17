@@ -197,6 +197,57 @@ func TestButtonFocusCycleAndActivate(t *testing.T) {
 	}
 }
 
+// TestShiftTabCyclesFocusBackwards verifies reverse focus cycling: from the
+// initial focusable, Shift+Tab wraps backwards to the LAST button in the
+// ring, and a second Shift+Tab steps back to the middle one.
+func TestShiftTabCyclesFocusBackwards(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"b1", "b2", "b3"}}}},
+		{ID: "b1", Button: &a2ui.ButtonComponent{Child: "l1"}},
+		{ID: "b2", Button: &a2ui.ButtonComponent{Child: "l2"}},
+		{ID: "b3", Button: &a2ui.ButtonComponent{Child: "l3"}},
+		text("l1", "First"),
+		text("l2", "Second"),
+		text("l3", "Third"),
+	}
+	s := render.NewSurface("surf", comps)
+	s.Focus()
+
+	activate := func(t *testing.T) event.ButtonClicked {
+		t.Helper()
+		_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		if cmd == nil {
+			t.Fatal("enter on a focused button returned nil cmd")
+		}
+		ev, ok := cmd().(event.ButtonClicked)
+		if !ok {
+			t.Fatalf("cmd produced %T, want event.ButtonClicked", cmd())
+		}
+		return ev
+	}
+	shiftTab := func() {
+		s.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	}
+
+	// From index 0, Shift+Tab wraps to the last focusable.
+	shiftTab()
+	if ev := activate(t); ev.ID != "b3" {
+		t.Fatalf("after shift+tab from first, activated %q, want b3 (wrap to last)", ev.ID)
+	}
+
+	// Another Shift+Tab steps backwards to the middle button.
+	shiftTab()
+	if ev := activate(t); ev.ID != "b2" {
+		t.Fatalf("after second shift+tab, activated %q, want b2", ev.ID)
+	}
+
+	// A third brings it back to the first.
+	shiftTab()
+	if ev := activate(t); ev.ID != "b1" {
+		t.Fatalf("after third shift+tab, activated %q, want b1", ev.ID)
+	}
+}
+
 // collectMsgs executes a cmd (which may be a single cmd or a tea.Batch) and
 // returns all messages it produces. For a Batch, it iterates BatchMsg's
 // sub-cmds and calls each one.

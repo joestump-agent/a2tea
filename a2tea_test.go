@@ -47,6 +47,43 @@ func TestScanSplitsTextAndMessages(t *testing.T) {
 	}
 }
 
+// TestScanMalformedJSONInTags pins the ACTUAL behavior of Scan on malformed
+// JSON inside <a2ui-json> tags: a2uistream.ParseAndValidate does NOT return
+// an error — it silently drops the unparseable block and keeps the
+// surrounding text as text parts with zero messages. (Verified empirically
+// against a2uistream: truncated JSON and outright non-JSON both come back as
+// err == nil with no ServerMessages.) If a2uistream ever starts erroring
+// here, this test should be revisited deliberately, not just patched.
+func TestScanMalformedJSONInTags(t *testing.T) {
+	cases := []string{
+		// Truncated JSON: the block opens but never closes its objects.
+		`before <a2ui-json>{"version":"v0.9","updateComponents":{</a2ui-json> after`,
+		// Not JSON at all.
+		`before <a2ui-json>this is not json at all</a2ui-json> after`,
+	}
+	for _, in := range cases {
+		parts, err := a2tea.Scan(in)
+		if err != nil {
+			t.Fatalf("Scan(%q) err = %v, want nil (malformed blocks are dropped, not errored)", in, err)
+		}
+		total := 0
+		var texts []string
+		for _, p := range parts {
+			total += len(p.Messages)
+			if s := strings.TrimSpace(p.Text); s != "" {
+				texts = append(texts, s)
+			}
+		}
+		if total != 0 {
+			t.Fatalf("Scan(%q) produced %d messages from a malformed block, want 0", in, total)
+		}
+		joined := strings.Join(texts, "|")
+		if !strings.Contains(joined, "before") || !strings.Contains(joined, "after") {
+			t.Fatalf("Scan(%q) should keep surrounding text; got parts %q", in, joined)
+		}
+	}
+}
+
 func TestRenderSurface(t *testing.T) {
 	parts, err := a2tea.Scan(sampleReply)
 	if err != nil {
