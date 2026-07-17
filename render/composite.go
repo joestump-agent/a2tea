@@ -10,14 +10,33 @@ import (
 // state in order: updateComponents merges components by ID (siblings survive),
 // updateDataModel sets bound values, and deleteSurface clears the surface.
 //
-// Apply returns false if the surface was deleted (no renderable state
-// remains); the caller should treat the surface as gone.
+// Messages are scoped to this surface: an updateComponents or updateDataModel
+// carrying a different non-empty SurfaceID is skipped, so a stream that
+// interleaves several surfaces cannot corrupt this one. An empty SurfaceID on
+// those messages is treated as targeting this surface — some producers omit
+// the field when only one surface is in play. deleteSurface is stricter: being
+// destructive, it fires only on an exact SurfaceID match, never on an empty
+// one.
+//
+// deleteSurface clears all surface state (components, data model, edits,
+// focus) but processing continues: a later updateComponents in the same batch
+// legally re-creates the surface.
+//
+// Apply returns false when no renderable state remains after all messages
+// (the surface was deleted and not re-created); the caller should treat the
+// surface as gone.
 func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 	for _, m := range msgs {
 		switch {
 		case m.UpdateComponents != nil:
+			if !s.targetsThisSurface(m.UpdateComponents.SurfaceID) {
+				continue
+			}
 			s.applyComponents(m.UpdateComponents.Components)
 		case m.UpdateDataModel != nil:
+			if !s.targetsThisSurface(m.UpdateDataModel.SurfaceID) {
+				continue
+			}
 			s.applyDataModel(m.UpdateDataModel.Path, m.UpdateDataModel.Value)
 		case m.DeleteSurface != nil:
 			if m.DeleteSurface.SurfaceID == s.id {
@@ -25,11 +44,20 @@ func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 				s.rootID = ""
 				s.focusables = nil
 				s.focusIdx = 0
-				return false
+				s.data = nil
+				s.fieldValues = nil
 			}
 		}
 	}
 	return s.rootID != ""
+}
+
+// targetsThisSurface reports whether a message with the given SurfaceID
+// applies to this surface. An empty SurfaceID is lenient — treated as "the
+// current surface" — because some producers omit it when only one surface
+// exists; any other mismatch is a different surface's message.
+func (s *Surface) targetsThisSurface(surfaceID string) bool {
+	return surfaceID == "" || surfaceID == s.id
 }
 
 // applyComponents merges the given components into the surface's component map

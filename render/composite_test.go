@@ -244,3 +244,141 @@ func TestApplyRootDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// TestApplyIgnoresOtherSurfaceComponents verifies that an updateComponents
+// for a different surface does not clobber this surface's components.
+func TestApplyIgnoresOtherSurfaceComponents(t *testing.T) {
+	s := render.NewSurface("s1", []a2ui.Component{
+		{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("FROM-S1")}},
+	})
+
+	alive := s.Apply([]a2ui.ServerMessage{
+		{UpdateComponents: &a2ui.UpdateComponents{SurfaceID: "s2", Components: []a2ui.Component{
+			{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("FROM-S2")}},
+		}}},
+	})
+	if !alive {
+		t.Fatal("surface should stay alive after an unrelated update")
+	}
+
+	view := s.View().Content
+	if !strings.Contains(view, "FROM-S1") {
+		t.Errorf("s1 content clobbered by s2's update; view = %q", view)
+	}
+	if strings.Contains(view, "FROM-S2") {
+		t.Errorf("s2's component leaked into s1; view = %q", view)
+	}
+}
+
+// TestApplyIgnoresOtherSurfaceDataModel verifies that an updateDataModel for
+// a different surface does not resolve bindings on this surface.
+func TestApplyIgnoresOtherSurfaceDataModel(t *testing.T) {
+	s := render.NewSurface("s1", []a2ui.Component{
+		{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringBinding("/status")}},
+	})
+
+	s.Apply([]a2ui.ServerMessage{
+		{UpdateDataModel: &a2ui.UpdateDataModel{SurfaceID: "OTHER", Path: "/status", Value: "leaked"}},
+	})
+
+	view := s.View().Content
+	if strings.Contains(view, "leaked") {
+		t.Errorf("other surface's data model leaked into s1; view = %q", view)
+	}
+	if !strings.Contains(view, "{binding}") {
+		t.Errorf("binding should stay unresolved; view = %q", view)
+	}
+}
+
+// TestApplyEmptySurfaceIDTargetsThisSurface verifies the lenient path: a
+// message with an empty SurfaceID applies to the current surface, since some
+// producers omit the field when only one surface exists.
+func TestApplyEmptySurfaceIDTargetsThisSurface(t *testing.T) {
+	s := render.NewSurface("s1", []a2ui.Component{
+		{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringBinding("/status")}},
+	})
+
+	s.Apply([]a2ui.ServerMessage{
+		{UpdateDataModel: &a2ui.UpdateDataModel{Path: "/status", Value: "online"}},
+	})
+
+	view := s.View().Content
+	if !strings.Contains(view, "online") {
+		t.Errorf("empty-SurfaceID data-model update should apply; view = %q", view)
+	}
+}
+
+// TestApplyEmptySurfaceIDDeleteIsIgnored verifies the strict half of the
+// scoping rule: deleteSurface never fires on an empty SurfaceID.
+func TestApplyEmptySurfaceIDDeleteIsIgnored(t *testing.T) {
+	s := render.NewSurface("s1", []a2ui.Component{
+		{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("Hi")}},
+	})
+
+	alive := s.Apply([]a2ui.ServerMessage{
+		{DeleteSurface: &a2ui.DeleteSurface{}},
+	})
+	if !alive {
+		t.Fatal("empty-SurfaceID delete must not clear the surface")
+	}
+}
+
+// TestApplyDeleteThenRecreate verifies that a delete followed by an
+// updateComponents in the same batch re-creates the surface instead of the
+// batch dead-ending at the delete.
+func TestApplyDeleteThenRecreate(t *testing.T) {
+	s := render.NewSurface("s1", []a2ui.Component{
+		{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("OLD")}},
+	})
+
+	alive := s.Apply([]a2ui.ServerMessage{
+		{DeleteSurface: &a2ui.DeleteSurface{SurfaceID: "s1"}},
+		{UpdateComponents: &a2ui.UpdateComponents{SurfaceID: "s1", Components: []a2ui.Component{
+			{ID: "root2", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("RECREATED")}},
+		}}},
+	})
+	if !alive {
+		t.Fatal("delete-then-recreate should leave the surface alive")
+	}
+
+	view := s.View().Content
+	if !strings.Contains(view, "RECREATED") {
+		t.Errorf("recreated content missing; view = %q", view)
+	}
+	if strings.Contains(view, "OLD") {
+		t.Errorf("pre-delete content survived; view = %q", view)
+	}
+}
+
+// TestApplyDeleteClearsDataModelAndEdits verifies delete wipes the data model
+// and pending field edits, so a re-created surface starts clean.
+func TestApplyDeleteClearsDataModelAndEdits(t *testing.T) {
+	val := a2ui.StringLiteral("seed")
+	s := render.NewSurface("s1", []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"f", "b"}}}},
+		{ID: "f", TextField: &a2ui.TextFieldComponent{Value: &val}},
+		{ID: "b", Text: &a2ui.TextComponent{Text: a2ui.StringBinding("/status")}},
+	})
+	s.Focus()
+	s.Update(tea.KeyPressMsg{Code: 'X', Text: "X"}) // edit the field
+	s.Apply([]a2ui.ServerMessage{
+		{UpdateDataModel: &a2ui.UpdateDataModel{SurfaceID: "s1", Path: "/status", Value: "online"}},
+	})
+
+	s.Apply([]a2ui.ServerMessage{
+		{DeleteSurface: &a2ui.DeleteSurface{SurfaceID: "s1"}},
+		{UpdateComponents: &a2ui.UpdateComponents{SurfaceID: "s1", Components: []a2ui.Component{
+			{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"f", "b"}}}},
+			{ID: "f", TextField: &a2ui.TextFieldComponent{Value: &val}},
+			{ID: "b", Text: &a2ui.TextComponent{Text: a2ui.StringBinding("/status")}},
+		}}},
+	})
+
+	if vals := s.FieldValues(); vals["f"] != "seed" {
+		t.Errorf("field edit survived delete: FieldValues[f] = %v, want seed literal", vals["f"])
+	}
+	view := s.View().Content
+	if strings.Contains(view, "online") {
+		t.Errorf("data model survived delete; view = %q", view)
+	}
+}
