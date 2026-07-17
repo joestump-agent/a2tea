@@ -1,8 +1,11 @@
 package render
 
-// The field renderers in this file are READ-ONLY visuals: they draw each
-// input component's current value, but editing is not wired — the surface
-// never mutates field state or emits input events for these components.
+// The field renderers in this file draw each input component's current
+// value. TextField is editable — a focused field accepts typed edits, which
+// shadow its static literal (see renderTextField and the Update loop in
+// render.go). The rest (CheckBox, ChoicePicker, Slider, DateTimeInput) are
+// still read-only visuals: they never mutate field state or emit input
+// events.
 
 import (
 	"strconv"

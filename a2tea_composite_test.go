@@ -44,14 +44,6 @@ func boundText(id, path string) a2ui.Component {
 	return a2ui.Component{ID: id, Text: &a2ui.TextComponent{Text: a2ui.StringBinding(path)}}
 }
 
-func renderStr(m a2ui.ServerMessage) string {
-	model, err := a2tea.Render([]a2ui.ServerMessage{m})
-	if err != nil {
-		return ""
-	}
-	return ansi.Strip(model.View().Content)
-}
-
 // TestCompositeTwoUpdatesNoClobber verifies that two updateComponents
 // messages touching different components both take effect — the second
 // update does not clobber the first.

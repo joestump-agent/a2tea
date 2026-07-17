@@ -3,7 +3,6 @@ package render_test
 import (
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -39,11 +38,12 @@ func renderAtOpts(comps []a2ui.Component, width int, opts ...render.Option) stri
 	return ansi.Strip(surf.View().Content)
 }
 
-// maxLineWidth returns the number of cells occupied by the longest line in s.
+// maxLineWidth returns the number of terminal cells occupied by the longest
+// line in s (ANSI-aware and wide-rune-aware, unlike a rune count).
 func maxLineWidth(s string) int {
 	max := 0
 	for _, ln := range strings.Split(s, "\n") {
-		w := utf8.RuneCountInString(ln)
+		w := ansi.StringWidth(ln)
 		if w > max {
 			max = w
 		}

@@ -659,7 +659,3 @@ func KindOf(c a2ui.Component) string {
 	}
 	return "unknown"
 }
-
-// ensure strings is referenced by this file's helpers even before the
-// component files land; hr and wrapTo live in styles.go.
-var _ = strings.TrimSpace
