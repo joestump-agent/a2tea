@@ -382,3 +382,89 @@ func TestApplyDeleteClearsDataModelAndEdits(t *testing.T) {
 		t.Errorf("data model survived delete; view = %q", view)
 	}
 }
+
+// TestApplyCreateSurfaceIsNoOp verifies the documented stance on
+// createSurface: the message is a deliberate no-op that neither errors nor
+// mutates surface state — components, data model, and focus all survive, and
+// its theme hints are not applied (chrome stays whatever the host configured).
+func TestApplyCreateSurfaceIsNoOp(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"btn1", "btn2", "txt"}}}},
+		{ID: "btn1", Button: &a2ui.ButtonComponent{Child: "l1"}},
+		{ID: "btn2", Button: &a2ui.ButtonComponent{Child: "l2"}},
+		{ID: "l1", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("First")}},
+		{ID: "l2", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("Second")}},
+		{ID: "txt", Text: &a2ui.TextComponent{Text: a2ui.StringBinding("/status")}},
+	}
+	s := render.NewSurface("s1", comps)
+	s.Focus()
+
+	// Tab to btn2 and set a data-model value so there is state to preserve.
+	s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	s.Apply([]a2ui.ServerMessage{
+		{UpdateDataModel: &a2ui.UpdateDataModel{SurfaceID: "s1", Path: "/status", Value: "online"}},
+	})
+	before := s.View().Content
+
+	alive := s.Apply([]a2ui.ServerMessage{
+		{CreateSurface: &a2ui.CreateSurface{
+			SurfaceID: "s1",
+			CatalogID: "https://example.com/some-catalog.json",
+			Theme:     &a2ui.Theme{PrimaryColor: "#ff00ff", AgentDisplayName: "Themed Agent"},
+		}},
+	})
+	if !alive {
+		t.Fatal("surface should stay alive across a createSurface no-op")
+	}
+
+	after := s.View().Content
+	if after != before {
+		t.Errorf("createSurface mutated the rendered view:\nbefore:\n%q\nafter:\n%q", before, after)
+	}
+	if strings.Contains(after, "Themed Agent") {
+		t.Errorf("createSurface theme leaked into the view; view = %q", after)
+	}
+
+	// Focus must survive: Enter still activates btn2.
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter after createSurface produced nil cmd")
+	}
+	msg := cmd()
+	ev, ok := msg.(event.ButtonClicked)
+	if !ok {
+		t.Fatalf("cmd produced %T, want event.ButtonClicked", msg)
+	}
+	if ev.ID != "btn2" {
+		t.Fatalf("focus not preserved across createSurface: activated %q, want btn2", ev.ID)
+	}
+}
+
+// TestApplyCreateSurfaceDoesNotCreateState verifies that createSurface alone
+// establishes nothing — a surface only becomes renderable via
+// updateComponents, which may follow in the same batch.
+func TestApplyCreateSurfaceDoesNotCreateState(t *testing.T) {
+	s := render.NewSurface("s1", nil)
+
+	alive := s.Apply([]a2ui.ServerMessage{
+		{CreateSurface: &a2ui.CreateSurface{SurfaceID: "s1", CatalogID: "core"}},
+	})
+	if alive {
+		t.Fatal("createSurface alone must not make the surface renderable")
+	}
+
+	// The same batch shape agents actually send: createSurface then
+	// updateComponents. The latter is what establishes the surface.
+	alive = s.Apply([]a2ui.ServerMessage{
+		{CreateSurface: &a2ui.CreateSurface{SurfaceID: "s1", CatalogID: "core"}},
+		{UpdateComponents: &a2ui.UpdateComponents{SurfaceID: "s1", Components: []a2ui.Component{
+			{ID: "root", Text: &a2ui.TextComponent{Text: a2ui.StringLiteral("Hello")}},
+		}}},
+	})
+	if !alive {
+		t.Fatal("createSurface followed by updateComponents should establish the surface")
+	}
+	if view := s.View().Content; !strings.Contains(view, "Hello") {
+		t.Errorf("content from the establishing updateComponents missing; view = %q", view)
+	}
+}
