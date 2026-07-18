@@ -27,14 +27,28 @@ func activateButtonCtx(t *testing.T, comps []a2ui.Component) map[string]any {
 	}
 	s := render.NewSurface("surf1", append([]a2ui.Component{root}, comps...))
 	s.Focus()
-	// Tab to the first button in the focus ring. The ring now includes
-	// TextFields, so the first focusable may not be the button.
-	for range s.Focusables() {
-		if _, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil {
-			cm := findMsg[a2ui.ClientMessage](t, collectMsgs(t, cmd))
-			if cm.Action != nil {
-				return cm.Action.Context
+	// Tab to the first button in the focus ring, pressing Enter only once
+	// focus lands on it. The ring includes every input component, and Enter
+	// is no longer inert on all of them (it toggles a focused CheckBox), so
+	// blindly pressing Enter at each stop would corrupt the values under
+	// test.
+	isButton := make(map[string]bool, len(comps))
+	for _, c := range comps {
+		if c.Button != nil {
+			isButton[c.ID] = true
+		}
+	}
+	for _, id := range s.Focusables() {
+		if isButton[id] {
+			_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			if cmd == nil {
+				t.Fatalf("enter on button %q produced no cmd", id)
 			}
+			cm := findMsg[a2ui.ClientMessage](t, collectMsgs(t, cmd))
+			if cm.Action == nil {
+				t.Fatalf("button %q ClientMessage has nil Action", id)
+			}
+			return cm.Action.Context
 		}
 		s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	}

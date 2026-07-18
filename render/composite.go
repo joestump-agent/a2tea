@@ -46,6 +46,10 @@ func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 				s.focusIdx = 0
 				s.data = nil
 				s.fieldValues = nil
+				s.checkValues = nil
+				s.choiceValues = nil
+				s.sliderValues = nil
+				s.choiceCursor = nil
 			}
 		}
 	}
