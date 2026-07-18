@@ -46,6 +46,7 @@ func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 				s.focusIdx = 0
 				s.data = nil
 				s.fieldValues = nil
+				s.openModals = nil
 			}
 		}
 	}
@@ -63,7 +64,9 @@ func (s *Surface) targetsThisSurface(surfaceID string) bool {
 // applyComponents merges the given components into the surface's component map
 // by ID: an update to component X replaces X, leaving siblings intact. It
 // re-derives the root and focus ring, preserving focus on the same component
-// if it survives the merge.
+// if it survives the merge. Modal open state also survives the merge — only
+// entries whose component stopped being a modal are pruned — so an update
+// does not slam an open modal shut under the user.
 func (s *Surface) applyComponents(components []a2ui.Component) {
 	// Remember which button held focus before the merge.
 	var focusedID string
@@ -75,6 +78,7 @@ func (s *Surface) applyComponents(components []a2ui.Component) {
 		s.byID[c.ID] = c
 	}
 	s.rootID = s.deriveRootID()
+	s.pruneOpenModals()
 	s.focusables = s.collectFocusables()
 
 	// Preserve focus if the focused component survives.

@@ -26,7 +26,8 @@ rules, and `Button`s render as styled, focusable chrome. The input components
 (`TextField`, `CheckBox`, `ChoicePicker`, `Slider`, `DateTimeInput`) are
 read-only visuals of their current values; media components (`Image`, `Icon`,
 `Video`, `AudioPlayer`) draw compact one-line placeholders; `Tabs` render their
-title bar plus the first tab's content, and `Modal` renders only its trigger.
+title bar plus the first tab's content, and `Modal` opens on `Enter` (its
+content renders as a bordered in-flow block) and closes on `Esc`.
 
 Buttons are the first wired interaction: when the host gives a surface focus,
 `Tab` / `Shift+Tab` cycle its buttons and `Enter` emits `event.ButtonClicked`
@@ -100,8 +101,6 @@ What is **not** yet implemented:
   not applied.
 - **Tab switching.** Tabs are not focusable — the first tab is always the
   active one.
-- **Modal content.** A modal renders only its trigger; its content stays
-  hidden.
 - **Editing beyond `TextField`.** `CheckBox`/`ChoicePicker`/`Slider`/
   `DateTimeInput` remain read-only visuals.
 - **The remaining host-facing events.** `InputSubmitted`/`ChoiceSelected` are
