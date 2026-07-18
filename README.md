@@ -26,12 +26,14 @@ rules, and `Button`s render as styled, focusable chrome. All five input
 components (`TextField`, `CheckBox`, `ChoicePicker`, `Slider`,
 `DateTimeInput`) are focusable and editable, with edited values round-tripping
 to the agent; media components (`Image`, `Icon`, `Video`, `AudioPlayer`) draw
-compact one-line placeholders; `Tabs` render their title bar plus the first
-tab's content, and `Modal` opens on `Enter` (its content renders as a bordered
-in-flow block) and closes on `Esc`.
+compact one-line placeholders; `Tabs` render their title bar plus the active
+tab's content — the tab bar joins the focus ring and `left`/`right` (or
+`h`/`l`) switch tabs — and `Modal` opens on `Enter` (its content renders as a
+bordered in-flow block) and closes on `Esc`.
 
 Interaction is wired: when the host gives a surface focus, `Tab` / `Shift+Tab`
-cycle its focusables (buttons, inputs, and modals), `Enter` on a button emits
+cycle its focusables (buttons, inputs, modals, and tab bars), `Enter` on a
+button emits
 `event.ButtonClicked`, `Enter` on a `TextField` / `DateTimeInput` emits
 `event.InputSubmitted`, and a `ChoicePicker` selection change emits
 `event.ChoiceSelected` — each with `Source` context. Component chrome is
@@ -101,8 +103,11 @@ flowing into `ActionEvent.Context`; button activation sends a protocol-native
 
 What is **not** yet implemented:
 
-- **Tab switching.** Tabs are not focusable — the first tab is always the
-  active one ([#45](https://github.com/joestump-agent/a2tea/issues/45)).
+- Nothing currently tracked — the earlier wire-format gaps (`ChildList`
+  templates, `createSurface`, modal content, input editing, event dispatch,
+  and tab switching — issues
+  [#42–#47](https://github.com/joestump-agent/a2tea/issues)) have all landed.
+  New gaps get tickets as they are found.
 
 ## Versioning
 

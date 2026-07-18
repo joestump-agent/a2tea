@@ -42,7 +42,7 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   within `[min, max]`. Edited values shadow the static literals and flow into
   `ActionEvent.Context`.
 - Compact placeholders for media (`Image`, `Icon`, `Video`, `AudioPlayer`);
-  `Tabs` render their title bar plus the first tab's content.
+  `Tabs` render their title bar plus the active tab's content.
 - `Modal` opens and closes: the modal joins the focus ring as a single element
   drawn as its trigger, `Enter` toggles it open, and `Esc` closes the most
   recently opened modal. Open content renders as a bordered in-flow block (the
@@ -51,8 +51,8 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `Surface.HasOpenModal` to keep `Esc` routed to the surface while a modal is
   up (`a2tea.Standalone` does this before its esc-quit).
 - Wired events: when the host focuses a surface, `Tab` / `Shift+Tab` cycle its
-  focusables (buttons, all input components, and modals) and `Enter` activates
-  the focused button. Activation emits
+  focusables (buttons, all input components, modals, and tab bars) and `Enter`
+  activates the focused button. Activation emits
   `event.ButtonClicked` (carrying the resolved `*a2ui.EventAction`) and, when
   the button has a server-side `Action.Event`, a protocol-native
   `a2ui.ClientMessage` whose `ActionEvent` carries `Name`, `SurfaceID`,
@@ -89,7 +89,15 @@ Also implemented since earlier revisions of this doc:
   `catalogId` is ignored because a2tea's component catalog is the compiled-in
   one, by design. `Apply` handles the message with an explicit no-op case
   rather than silently falling through.
+- Tab switching (a2tea issue #45): the tab bar joins the focus ring;
+  `left`/`right` (or `h`/`l` when the tab bar is focused) switch the active
+  tab, active-tab state survives `updateComponents` merges the same way focus
+  does, and an index left out-of-range by a shrunken tab list clamps back to
+  the first tab. Components inside inactive tabs are excluded from the focus
+  ring.
 
 **Not yet** (tracked as follow-ups)
-- Tab switching: tabs are not focusable, so the first tab is always active
-  (a2tea issue #45).
+- Nothing currently tracked — the earlier gaps (`ChildList` templates,
+  `createSurface`, modal content, input editing, `InputSubmitted`/
+  `ChoiceSelected` dispatch, and tab switching, issues #42–#47) have all
+  landed. New gaps get tickets as they are found.

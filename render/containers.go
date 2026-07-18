@@ -95,20 +95,29 @@ func (s *Surface) renderDivider(c a2ui.Component) string {
 }
 
 // renderTabs renders a Tabs component: a bar of tab titles separated by " │ "
-// followed by the active tab's child. Tab switching isn't wired yet (tabs are
-// not focusable), so the first tab is always the active one — its title is
-// bolded and only its child renders.
+// followed by the active tab's child. The tab bar is part of the focus ring;
+// the active title renders bold (Heading) normally and reverse-video
+// (ButtonFocused, consistent with button focus chrome) when the tab bar holds
+// focus, so both the selection and the focus read in monochrome. The active
+// index comes from the surface's per-component tab state, clamped to the
+// current tab count (activeTab), so an update that shrank the tab list can
+// never index past the end.
 func (s *Surface) renderTabs(c a2ui.Component, seen map[string]bool) string {
 	tabs := c.Tabs.Tabs
 	if len(tabs) == 0 {
 		return s.styles.Caption.Render("[a2tea: tabs with no tabs]")
 	}
+	active := s.activeTab(c.ID, len(tabs))
 	titles := make([]string, len(tabs))
 	for i, t := range tabs {
 		titles[i] = s.dynString(t.Title)
 	}
-	titles[0] = s.styles.Heading.Render(titles[0])
-	return strings.Join(titles, " │ ") + "\n" + s.renderComponent(tabs[0].Child, seen)
+	if s.isFocused(c.ID) {
+		titles[active] = s.styles.ButtonFocused.Render(titles[active])
+	} else {
+		titles[active] = s.styles.Heading.Render(titles[active])
+	}
+	return strings.Join(titles, " │ ") + "\n" + s.renderComponent(tabs[active].Child, seen)
 }
 
 // renderModal renders a Modal component. The modal itself is the focusable
