@@ -70,7 +70,7 @@ terminal size. A runnable version of the whole flow lives in
 
 - `github.com/joestump-agent/a2tea` — public entry point: `Contains`, `Scan(reply) ([]Part, error)`, `Render(msgs) (tea.Model, error)`, and `Standalone`.
 - `github.com/joestump-agent/a2tea/render` — walks an A2UI surface (components referencing children by ID) into an embeddable `render.Model`.
-- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types a host can consume for interaction results (`ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`), each carrying `Source`. `ButtonClicked` is emitted when a focused button is activated; the rest are defined but not emitted yet.
+- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types a host can consume for interaction results (`ButtonClicked`, `InputSubmitted`, `ChoiceSelected`), each carrying `Source`. `ButtonClicked` is emitted when a focused button is activated; `InputSubmitted` when Enter confirms a focused `TextField`/`DateTimeInput` value; `ChoiceSelected` (carrying the full selection as `Values []string`) when a focused `ChoicePicker`'s selection changes. `FormSubmitted` is deprecated and never emitted.
 
 A2UI message and component types come from `github.com/tmc/a2ui`.
 
@@ -103,9 +103,6 @@ What is **not** yet implemented:
   active one.
 - **Editing beyond `TextField`.** `CheckBox`/`ChoicePicker`/`Slider`/
   `DateTimeInput` remain read-only visuals.
-- **The remaining host-facing events.** `InputSubmitted`/`ChoiceSelected` are
-  defined but never dispatched; `event.ButtonClicked` is the only host-facing
-  event emitted.
 
 ## Versioning
 

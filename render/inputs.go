@@ -1,6 +1,14 @@
 package render
 
-import a2ui "github.com/tmc/a2ui"
+import (
+	"slices"
+
+	tea "charm.land/bubbletea/v2"
+
+	a2ui "github.com/tmc/a2ui"
+
+	"github.com/joestump-agent/a2tea/event"
+)
 
 // This file holds the edit paths for the non-text input components: CheckBox
 // (Space/Enter toggles), ChoicePicker (Up/Down moves the highlight, Space
@@ -100,15 +108,29 @@ func (s *Surface) movePickerCursor(delta int) {
 // selected option keeps it selected). The stored value is normalized to
 // option-declaration order, so literal values that name no declared option
 // are dropped once the user edits.
-func (s *Surface) togglePickerOption() {
+//
+// When the toggle changes the selection set it returns a command dispatching
+// event.ChoiceSelected with the picker's full post-toggle selection; a toggle
+// that leaves the (normalized) selection unchanged — re-selecting a
+// single-select picker's already selected option — returns nil.
+func (s *Surface) togglePickerOption() tea.Cmd {
 	id := s.focusables[s.focusIdx]
 	c, ok := s.byID[id]
 	if !ok || c.ChoicePicker == nil || len(c.ChoicePicker.Options) == 0 {
-		return
+		return nil
 	}
 	cp := c.ChoicePicker
 	optVal := cp.Options[s.pickerCursor(id, cp)].Value
 	sel := s.pickerSelection(id, cp)
+	// Normalize the pre-toggle selection to option-declaration order so the
+	// changed check compares like with like (a literal naming no declared
+	// option is dropped by normalization, not by the user's toggle).
+	before := make([]string, 0, len(sel))
+	for _, opt := range cp.Options {
+		if sel[opt.Value] {
+			before = append(before, opt.Value)
+		}
+	}
 	if cp.Variant == a2ui.ChoicePickerVariantMultipleSelection {
 		sel[optVal] = !sel[optVal]
 	} else {
@@ -124,6 +146,15 @@ func (s *Surface) togglePickerOption() {
 		s.choiceValues = make(map[string][]string)
 	}
 	s.choiceValues[id] = out
+	if slices.Equal(before, out) {
+		return nil
+	}
+	selected := event.ChoiceSelected{
+		Source: event.Source{ComponentID: id, SurfaceID: s.id},
+		ID:     id,
+		Values: out,
+	}
+	return func() tea.Msg { return selected }
 }
 
 // sliderStep is the per-keypress increment for a slider spanning span. The

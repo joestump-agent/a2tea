@@ -240,22 +240,62 @@ func TestFieldValuesReturnsLiteralWhenNotEdited(t *testing.T) {
 	}
 }
 
-// TestEnterOnTextFieldIsNoOp verifies that pressing Enter while a TextField is
-// focused does NOT emit a ButtonClicked event.
-func TestEnterOnTextFieldIsNoOp(t *testing.T) {
+// TestEnterOnTextFieldEmitsInputSubmitted verifies that pressing Enter while
+// a TextField is focused emits event.InputSubmitted with Source set and the
+// field's current value — and does NOT emit ButtonClicked (Enter still only
+// activates buttons).
+func TestEnterOnTextFieldEmitsInputSubmitted(t *testing.T) {
 	s := fieldSurface(t)
 
-	// Focus is on the text field (index 0). Press Enter.
+	// Focus is on the text field (index 0). Press Enter without editing: the
+	// submitted value is the field's literal.
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	msgs := collectMsgs(t, cmd)
+
+	if hasMsg[event.ButtonClicked](msgs) {
+		t.Fatal("Enter on a TextField should not emit ButtonClicked")
+	}
+	sub := findMsg[event.InputSubmitted](t, msgs)
+	if sub.ComponentID != "field" || sub.SurfaceID != "s" {
+		t.Fatalf("InputSubmitted.Source = %#v, want ComponentID 'field', SurfaceID 's'", sub.Source)
+	}
+	if sub.ID != "field" || sub.Value != "initial" {
+		t.Fatalf("InputSubmitted = %#v, want ID 'field', Value 'initial'", sub)
+	}
+}
+
+// TestEnterSubmitsEditedValue verifies InputSubmitted carries the edited text,
+// not the stale literal, after the user types into the field.
+func TestEnterSubmitsEditedValue(t *testing.T) {
+	s := fieldSurface(t)
+
+	for _, r := range "!!" {
+		s.Update(typeKey(r))
+	}
 	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	// cmd should be nil — no activation.
-	if cmd != nil {
-		msgs := collectMsgs(t, cmd)
-		for _, m := range msgs {
-			if _, ok := m.(event.ButtonClicked); ok {
-				t.Fatal("Enter on a TextField should not emit ButtonClicked")
-			}
-		}
+	sub := findMsg[event.InputSubmitted](t, collectMsgs(t, cmd))
+	if sub.Value != "initial!!" {
+		t.Fatalf("InputSubmitted.Value = %q, want %q", sub.Value, "initial!!")
+	}
+}
+
+// TestEnterOnUnresolvedBoundFieldSubmitsEmpty verifies submitting an unedited
+// TextField whose value is an unresolved binding carries "" — the "{binding}"
+// display placeholder must not leak into the event.
+func TestEnterOnUnresolvedBoundFieldSubmitsEmpty(t *testing.T) {
+	bound := a2ui.StringBinding("/name")
+	comps := []a2ui.Component{
+		{ID: "root", Column: &a2ui.ColumnComponent{Children: a2ui.ChildList{IDs: []string{"f"}}}},
+		{ID: "f", TextField: &a2ui.TextFieldComponent{Value: &bound}},
+	}
+	s := render.NewSurface("s", comps)
+	s.Focus()
+
+	_, cmd := s.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	sub := findMsg[event.InputSubmitted](t, collectMsgs(t, cmd))
+	if sub.Value != "" {
+		t.Fatalf("InputSubmitted.Value = %q, want empty (placeholder leaked)", sub.Value)
 	}
 }
 

@@ -1,6 +1,7 @@
 package event_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/joestump-agent/a2tea/event"
@@ -19,8 +20,8 @@ func TestSourceContext(t *testing.T) {
 		t.Fatalf("InputSubmitted shape unexpected: %#v", i)
 	}
 
-	c := event.ChoiceSelected{Source: event.Source{ComponentID: "form1"}, ID: "color", Value: "red"}
-	if c.Value != "red" {
+	c := event.ChoiceSelected{Source: event.Source{ComponentID: "form1"}, ID: "color", Values: []string{"red", "blue"}}
+	if c.ComponentID != "form1" || c.ID != "color" || !slices.Equal(c.Values, []string{"red", "blue"}) {
 		t.Fatalf("ChoiceSelected shape unexpected: %#v", c)
 	}
 }
