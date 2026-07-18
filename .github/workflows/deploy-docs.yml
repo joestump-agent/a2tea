@@ -1,0 +1,81 @@
+name: Deploy docs
+
+# Builds the Docusaurus site in website/ and publishes it to GitHub Pages.
+# Pages is auto-enabled on first deploy via configure-pages (enablement: true).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/deploy-docs.yml'
+  # Build-only check on PRs that touch the site, so a broken docs change
+  # can't merge green and fail on main's deploy.
+  pull_request:
+    paths:
+      - 'website/**'
+      - '.github/workflows/deploy-docs.yml'
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+# Least-privilege token for Pages deployment.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time per ref; don't cancel in-progress production
+# deploys. PR builds get their own group so they never queue behind a deploy.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
+
+  deploy:
+    name: Deploy
+    needs: build
+    # PRs only build; deployment happens on push to main (and manual runs).
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Enables Pages (Source = GitHub Actions) on first run, so no manual
+      # Settings → Pages step is needed. GITHUB_TOKEN's pages:write suffices.
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

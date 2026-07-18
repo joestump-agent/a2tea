@@ -1,0 +1,52 @@
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bubbletea TUI boba cup mark">
+  <defs>
+    <linearGradient id="boba-cup" x1="60" y1="70" x2="180" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF5FA2"></stop>
+      <stop offset="0.45" stop-color="#EE6FF8"></stop>
+      <stop offset="1" stop-color="#7D56F4"></stop>
+    </linearGradient>
+    <linearGradient id="boba-tea" x1="70" y1="95" x2="170" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7D56F4"></stop>
+      <stop offset="1" stop-color="#4EE6FF"></stop>
+    </linearGradient>
+    <filter id="boba-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b"></feGaussianBlur>
+      <feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+    </filter>
+  </defs>
+
+  
+  <g opacity="0.5" stroke="#4EE6FF" stroke-width="1">
+    <line x1="20" y1="196" x2="220" y2="196" opacity="0.25"></line>
+    <line x1="20" y1="212" x2="220" y2="212" opacity="0.15"></line>
+  </g>
+
+  <g filter="url(#boba-glow)">
+    
+    <rect x="150" y="34" width="16" height="120" rx="4" transform="rotate(12 158 94)" fill="#4EE6FF"></rect>
+    <rect x="150" y="34" width="16" height="120" rx="4" transform="rotate(12 158 94)" fill="none" stroke="#08080F" stroke-width="2"></rect>
+
+    
+    <path d="M62 92 L178 92 L166 206 A14 14 0 0 1 152 218 L88 218 A14 14 0 0 1 74 206 Z" fill="url(#boba-cup)" stroke="#08080F" stroke-width="4" stroke-linejoin="round"></path>
+
+    
+    <path d="M67 120 L173 120 L166 206 A14 14 0 0 1 152 218 L88 218 A14 14 0 0 1 74 206 Z" fill="url(#boba-tea)" opacity="0.9"></path>
+
+    
+    <rect x="56" y="78" width="128" height="20" rx="8" fill="#0E0E1A" stroke="#4EE6FF" stroke-width="3"></rect>
+
+    
+    <circle cx="96" cy="196" r="9" fill="#0E0E1A" stroke="#08080F" stroke-width="2"></circle>
+    <circle cx="120" cy="200" r="9" fill="#0E0E1A" stroke="#08080F" stroke-width="2"></circle>
+    <circle cx="144" cy="196" r="9" fill="#0E0E1A" stroke="#08080F" stroke-width="2"></circle>
+    <circle cx="108" cy="184" r="8" fill="#0E0E1A" stroke="#08080F" stroke-width="2"></circle>
+    <circle cx="132" cy="184" r="8" fill="#0E0E1A" stroke="#08080F" stroke-width="2"></circle>
+
+    
+    <circle cx="104" cy="150" r="5" fill="#08080F"></circle>
+    <circle cx="140" cy="150" r="5" fill="#08080F"></circle>
+    <path d="M110 162 Q122 172 134 162" stroke="#08080F" stroke-width="4" fill="none" stroke-linecap="round"></path>
+    <circle cx="92" cy="160" r="5" fill="#FF5FA2" opacity="0.7"></circle>
+    <circle cx="152" cy="160" r="5" fill="#FF5FA2" opacity="0.7"></circle>
+  </g>
+</svg>
