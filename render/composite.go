@@ -18,6 +18,13 @@ import (
 // destructive, it fires only on an exact SurfaceID match, never on an empty
 // one.
 //
+// createSurface is deliberately a no-op. a2tea treats the first
+// updateComponents as implicit surface creation, and the hints createSurface
+// carries have no honorable mapping here: theme (primaryColor, iconUrl,
+// agentDisplayName) is superseded by host theming via WithStyles — component
+// chrome stays monochrome so the host theme wins — and catalogId is ignored
+// because a2tea's catalog is the compiled-in one, by design.
+//
 // deleteSurface clears all surface state (components, data model, edits,
 // focus) but processing continues: a later updateComponents in the same batch
 // legally re-creates the surface.
@@ -28,6 +35,11 @@ import (
 func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 	for _, m := range msgs {
 		switch {
+		case m.CreateSurface != nil:
+			// Deliberate no-op: surface creation is implied by the first
+			// updateComponents, host WithStyles owns theming, and the
+			// component catalog is compiled in. See the Apply doc comment
+			// and docs/wire-format.md.
 		case m.UpdateComponents != nil:
 			if !s.targetsThisSurface(m.UpdateComponents.SurfaceID) {
 				continue
