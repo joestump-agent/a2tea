@@ -69,9 +69,17 @@ component tree from the root (the component nothing else references as a child).
 
 ### ✗ Not yet
 
-- `ChildList` templates (explicit ID lists only)
-- `createSurface` theming / catalog
-- Tab switching (first tab is active)
-- Modal content (trigger only)
-- Editing beyond `TextField`
-- `InputSubmitted` / `ChoiceSelected` events
+Each gap is tracked in the issue backlog:
+
+- `ChildList` templates (explicit ID lists only) —
+  [#44](https://github.com/joestump-agent/a2tea/issues/44)
+- `createSurface` theming / catalog —
+  [#47](https://github.com/joestump-agent/a2tea/issues/47)
+- Tab switching (first tab is active) —
+  [#45](https://github.com/joestump-agent/a2tea/issues/45)
+- Modal content (trigger only) —
+  [#46](https://github.com/joestump-agent/a2tea/issues/46)
+- Editing beyond `TextField` —
+  [#42](https://github.com/joestump-agent/a2tea/issues/42)
+- `InputSubmitted` / `ChoiceSelected` events —
+  [#43](https://github.com/joestump-agent/a2tea/issues/43)
