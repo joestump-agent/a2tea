@@ -1,0 +1,415 @@
+/* ============================================================
+   a2tea docs — Bubble Tea TUI design system, ported to Infima.
+
+   A terminal palette: deep blue-black backgrounds lit by ANSI
+   neon in dark mode; lavender paper in light mode. Charm's
+   signature purple + hot pink anchor the brand; cyan + mint
+   push it toward Tron.
+
+   Dark mode  = the design system's :root (void)  -> [data-theme='dark']
+   Light mode = the design system's "day" override -> :root / [data-theme='light']
+   ============================================================ */
+
+/* ---------- Structural tokens (theme-independent) ---------- */
+:root {
+  /* Families */
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  --font-display: 'Space Mono', 'JetBrains Mono', ui-monospace, monospace;
+  --font-pixel: 'Silkscreen', 'Space Mono', monospace;
+
+  /* Radii */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-pill: 999px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+
+  /* Signature gradients (fixed hues; look right in both themes) */
+  --grad-charm: linear-gradient(90deg, #FF5FA2 0%, #7D56F4 100%);
+  --grad-tron: linear-gradient(90deg, #7D56F4 0%, #4EE6FF 100%);
+  --grad-boba: linear-gradient(135deg, #FF5FA2 0%, #EE6FF8 40%, #7D56F4 100%);
+  --grad-neon-bar: linear-gradient(90deg, #00F0A8 0%, #4EE6FF 50%, #7D56F4 100%);
+
+  /* Infima structural */
+  --ifm-font-family-base: var(--font-mono);
+  --ifm-font-family-monospace: var(--font-mono);
+  --ifm-heading-font-family: var(--font-display);
+  --ifm-font-size-base: 15px;
+  --ifm-line-height-base: 1.6;
+  --ifm-code-font-size: 92%;
+  --ifm-heading-font-weight: 700;
+  --ifm-h1-font-size: 2.4rem;
+  --ifm-global-radius: var(--radius-md);
+  --ifm-button-border-radius: var(--radius-md);
+  --ifm-navbar-height: 64px;
+  --ifm-code-border-radius: var(--radius-sm);
+  --ifm-alert-border-radius: var(--radius-md);
+  --docusaurus-highlighted-code-line-bg: rgba(125, 86, 244, 0.12);
+}
+
+/* ============================================================
+   LIGHT MODE (design "day") — lavender paper.
+   ============================================================ */
+:root,
+html[data-theme='light'] {
+  /* brand, deepened */
+  --charm-purple: #6C46EA;
+  --charm-purple-lo: #5A36D6;
+  --charm-purple-hi: #5230C9;
+  --charm-pink: #E43A8C;
+  --charm-pink-hi: #B92368;
+  --charm-fuchsia: #C238CE;
+  --neon-cyan: #0793B4;
+  --neon-cyan-hi: #056A83;
+  --neon-mint: #059669;
+  --neon-mint-lo: #04785A;
+  --neon-gold: #B4770A;
+  --neon-coral: #DC4433;
+  --neon-lilac: #6D4FD0;
+
+  /* surfaces — lavender paper */
+  --bg-void: #EEEDFA;
+  --bg-terminal: #FDFDFF;
+  --bg-surface: #F6F5FD;
+  --bg-surface-2: #ECEAF9;
+  --bg-surface-3: #E0DDF4;
+  --bg-inset: #F1F0FA;
+
+  --line-dim: #E2DFF4;
+  --line: #CCC7EA;
+  --line-bright: #A79FDB;
+  --grid-tron: rgba(108, 70, 234, 0.06);
+
+  --text-bright: #17162B;
+  --text-body: #333155;
+  --text-muted: #625F92;
+  --text-dim: #908DBA;
+  --text-on-accent: #FFFFFF;
+
+  --tint-primary: rgba(108, 70, 234, 0.10);
+  --tint-accent: rgba(228, 58, 140, 0.10);
+  --tint-info: rgba(7, 147, 180, 0.10);
+
+  --shadow-window: 0 24px 60px -18px rgba(35, 30, 80, 0.25), 0 0 0 1px rgba(108, 70, 234, 0.10);
+  --shadow-panel: 0 8px 24px -10px rgba(35, 30, 80, 0.16);
+  --glow-soft: 0 4px 24px rgba(108, 70, 234, 0.14);
+
+  /* Infima primary ramp */
+  --ifm-color-primary: #6C46EA;
+  --ifm-color-primary-dark: #5A36D6;
+  --ifm-color-primary-darker: #5230C9;
+  --ifm-color-primary-darkest: #4428A6;
+  --ifm-color-primary-light: #855FFF;
+  --ifm-color-primary-lighter: #9878FF;
+  --ifm-color-primary-lightest: #C3B2FF;
+
+  --ifm-background-color: var(--bg-void);
+  --ifm-background-surface-color: var(--bg-surface);
+  --ifm-color-content: var(--text-body);
+  --ifm-color-content-secondary: var(--text-muted);
+  --ifm-heading-color: var(--text-bright);
+  --ifm-link-color: var(--charm-purple);
+  --ifm-link-hover-color: var(--charm-pink);
+  --ifm-menu-color: var(--text-muted);
+  --ifm-menu-color-active: var(--charm-purple);
+  --ifm-menu-color-background-active: var(--tint-primary);
+  --ifm-navbar-background-color: var(--bg-void);
+  --ifm-navbar-link-color: var(--text-muted);
+  --ifm-navbar-link-hover-color: var(--charm-pink);
+  --ifm-footer-background-color: var(--bg-surface);
+  --ifm-footer-color: var(--text-muted);
+  --ifm-footer-link-color: var(--text-muted);
+  --ifm-footer-title-color: var(--text-dim);
+  --ifm-code-background: var(--bg-surface-2);
+  --ifm-pre-background: var(--bg-inset);
+  --ifm-toc-border-color: var(--line-dim);
+  --ifm-table-border-color: var(--line-dim);
+  --ifm-table-head-background: var(--bg-surface);
+  --ifm-table-stripe-background: var(--bg-surface);
+  --ifm-blockquote-color: var(--text-muted);
+  --ifm-hr-background-color: var(--line-dim);
+}
+
+/* ============================================================
+   DARK MODE (design :root) — the void, lit by neon.
+   ============================================================ */
+html[data-theme='dark'] {
+  /* brand core */
+  --charm-purple: #7D56F4;
+  --charm-purple-lo: #6642E0;
+  --charm-purple-hi: #9B7CFF;
+  --charm-pink: #FF5FA2;
+  --charm-pink-hi: #FF8AC0;
+  --charm-fuchsia: #EE6FF8;
+  --neon-cyan: #4EE6FF;
+  --neon-cyan-hi: #A6F4FF;
+  --neon-mint: #00F0A8;
+  --neon-mint-lo: #04B575;
+  --neon-gold: #FFC64B;
+  --neon-coral: #FF6E5E;
+  --neon-lilac: #C8A2FF;
+
+  /* terminal surfaces (blue-black) */
+  --bg-void: #08080F;
+  --bg-terminal: #0E0E1A;
+  --bg-surface: #15152A;
+  --bg-surface-2: #1E1E38;
+  --bg-surface-3: #2A2A4A;
+  --bg-inset: #0A0A14;
+
+  --line-dim: #262645;
+  --line: #3A3A66;
+  --line-bright: #55558F;
+  --grid-tron: rgba(78, 230, 255, 0.06);
+
+  --text-bright: #F4F4FF;
+  --text-body: #C9C9E8;
+  --text-muted: #8888B0;
+  --text-dim: #5B5B84;
+  --text-on-accent: #0E0E1A;
+
+  --tint-primary: rgba(125, 86, 244, 0.16);
+  --tint-accent: rgba(255, 95, 162, 0.10);
+  --tint-info: rgba(78, 230, 255, 0.10);
+
+  --shadow-window: 0 24px 60px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(125, 86, 244, 0.15);
+  --shadow-panel: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  --glow-soft: 0 0 24px rgba(125, 86, 244, 0.25);
+
+  /* Infima primary ramp */
+  --ifm-color-primary: #9B7CFF;
+  --ifm-color-primary-dark: #7D56F4;
+  --ifm-color-primary-darker: #6642E0;
+  --ifm-color-primary-darkest: #5230C9;
+  --ifm-color-primary-light: #B29AFF;
+  --ifm-color-primary-lighter: #C8B8FF;
+  --ifm-color-primary-lightest: #E0D6FF;
+
+  --ifm-background-color: var(--bg-void);
+  --ifm-background-surface-color: var(--bg-surface);
+  --ifm-color-content: var(--text-body);
+  --ifm-color-content-secondary: var(--text-muted);
+  --ifm-heading-color: var(--text-bright);
+  --ifm-link-color: var(--charm-purple-hi);
+  --ifm-link-hover-color: var(--charm-pink);
+  --ifm-menu-color: var(--text-muted);
+  --ifm-menu-color-active: var(--charm-purple-hi);
+  --ifm-menu-color-background-active: var(--tint-primary);
+  --ifm-navbar-background-color: rgba(8, 8, 15, 0.85);
+  --ifm-navbar-link-color: var(--text-muted);
+  --ifm-navbar-link-hover-color: var(--charm-pink);
+  --ifm-footer-background-color: #0B0B16;
+  --ifm-footer-color: var(--text-muted);
+  --ifm-footer-link-color: var(--text-muted);
+  --ifm-footer-title-color: var(--text-dim);
+  --ifm-code-background: var(--bg-surface-2);
+  --ifm-pre-background: var(--bg-inset);
+  --ifm-toc-border-color: var(--line-dim);
+  --ifm-table-border-color: var(--line-dim);
+  --ifm-table-head-background: var(--bg-surface);
+  --ifm-table-stripe-background: var(--bg-surface);
+  --ifm-blockquote-color: var(--text-muted);
+  --ifm-hr-background-color: var(--line-dim);
+}
+
+/* ---------- Global page: Tron floor grid + hero glow ---------- */
+html,
+body {
+  background-color: var(--bg-void);
+}
+
+body {
+  background-image:
+    radial-gradient(1200px 520px at 50% -12%, var(--tint-primary), transparent 70%),
+    linear-gradient(var(--grid-tron) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-tron) 1px, transparent 1px);
+  background-size: auto, 30px 30px, 30px 30px;
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(125, 86, 244, 0.32);
+  color: var(--text-bright);
+}
+
+/* ---------- Navbar ---------- */
+.navbar {
+  border-bottom: 1px solid var(--line-dim);
+  backdrop-filter: saturate(140%) blur(8px);
+}
+
+.navbar__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  background: var(--grad-charm);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.navbar__link {
+  font-size: 13px;
+}
+
+/* ---------- Sidebar / menu ---------- */
+.menu {
+  font-size: 13px;
+}
+
+.menu__list-item-collapsible .menu__link,
+.theme-doc-sidebar-item-category > .menu__list-item-collapsible {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.menu__link {
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  transition: color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  border-left-color: var(--charm-purple);
+  font-weight: 700;
+}
+
+/* ---------- Links & headings ---------- */
+.markdown a {
+  font-weight: 500;
+}
+
+.markdown h1 {
+  letter-spacing: -0.03em;
+}
+
+.markdown h2,
+.markdown h3 {
+  letter-spacing: -0.02em;
+}
+
+/* Eyebrow labels via blockquote won't do — use table-of-contents styling */
+.table-of-contents__link {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* ---------- Code ---------- */
+.theme-code-block,
+pre[class*='language-'] {
+  border: 1px solid var(--line-dim);
+  box-shadow: var(--shadow-panel);
+}
+
+code {
+  border: 1px solid var(--line-dim);
+}
+
+/* ---------- Tables ---------- */
+.markdown table {
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line-dim);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.markdown table thead tr {
+  border-bottom: 1px solid var(--line);
+}
+
+.markdown table th {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ---------- Admonitions: neon left rules ---------- */
+.theme-admonition {
+  border: 1px solid var(--line-dim);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.theme-admonition-note,
+.theme-admonition-info {
+  border-left: 3px solid var(--neon-cyan);
+  background: var(--tint-info);
+}
+
+.theme-admonition-tip {
+  border-left: 3px solid var(--neon-mint);
+}
+
+.theme-admonition-warning,
+.theme-admonition-caution {
+  border-left: 3px solid var(--neon-gold);
+}
+
+.theme-admonition-danger {
+  border-left: 3px solid var(--neon-coral);
+}
+
+/* ---------- Footer ---------- */
+.footer {
+  border-top: 1px solid var(--line-dim);
+}
+
+.footer__title {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.footer__link-item {
+  font-size: 13px;
+}
+
+/* ---------- Pagination cards ---------- */
+.pagination-nav__link {
+  border: 1px solid var(--line-dim);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.pagination-nav__sublabel {
+  color: var(--text-dim);
+}
+
+.pagination-nav__label {
+  color: var(--charm-purple);
+}
+
+/* ---------- Buttons ---------- */
+.button--primary {
+  background: var(--charm-purple);
+  border-color: var(--charm-purple);
+  color: var(--text-on-purple, #fff);
+}
+
+.button--primary:hover {
+  background: var(--charm-purple-lo);
+  border-color: var(--charm-purple-lo);
+  box-shadow: var(--glow-soft);
+}

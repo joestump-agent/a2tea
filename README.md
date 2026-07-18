@@ -2,6 +2,9 @@
 
 **A2UI → Bubble Tea bridge.**
 
+📖 **Docs:** https://joestump-agent.github.io/a2tea/ — the full documentation
+site (source in [`website/`](website/)).
+
 `a2tea` lets an AI agent drive a terminal UI with [A2UI](https://a2ui.org): it
 parses the A2UI messages an agent emits — interleaved with conversational text
 in an LLM response — and renders the described surfaces as
