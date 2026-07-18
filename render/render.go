@@ -5,8 +5,8 @@
 // Rendering is real for the core catalog: Text (with variants), Card, Column,
 // Row, List, Divider, Button, and editable visuals for the input components
 // (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput). Media components
-// (Image, Icon, Video, AudioPlayer) draw compact placeholders, as do Tabs and
-// Modal. DynamicString data bindings render as placeholders until the data
+// (Image, Icon, Video, AudioPlayer) draw compact placeholders, as does Tabs.
+// DynamicString data bindings render as placeholders until the data
 // model lands.
 //
 // Interaction: Buttons are focusable. When the host grants the surface focus,
@@ -23,6 +23,13 @@
 // Up/Down and toggles the highlighted option with Space. A focused Slider
 // steps with Left/Right within its min/max bounds. Edited values are read back
 // via FieldValues and flow into a button's ActionEvent Context.
+//
+// Modals open and close: a Modal joins the focus ring as a single element
+// drawn as its trigger, Enter toggles it open, and Esc closes the most
+// recently opened modal. Open content renders as a bordered in-flow block —
+// the honest terminal equivalent of an overlay — and its focusables join the
+// ring only while it is open. Hosts use HasOpenModal to keep Esc routed to
+// the surface while a modal is up (mirroring the EditingText probe).
 //
 // Composition contract. A renderer is designed to be embedded as a child of a
 // larger TUI (crush), not to be the root of its own program:
@@ -123,6 +130,14 @@ type Surface struct {
 	// bound DynamicString/Value components at render time.
 	data map[string]any
 
+	// scope is the stack of data-model elements for the ChildList template
+	// instances currently being rendered: renderTemplateChildren pushes each
+	// list element before rendering the template component and pops it after,
+	// so bindings inside the instance resolve against that element first (see
+	// lookupBinding). Empty outside template expansion. Rendering is a
+	// single-goroutine depth-first pass, so the push/pop is safe.
+	scope []any
+
 	// focusables are the IDs of interactive components (buttons and input
 	// components) in depth-first tree order; focusIdx points at the one
 	// holding focus.
@@ -153,6 +168,12 @@ type Surface struct {
 	// by component ID. It is presentation state, not a value: it never flows
 	// into FieldValues or ActionEvent.Context.
 	choiceCursor map[string]int
+
+	// openModals holds the component IDs of Modal components currently
+	// open, in the order they were opened (a stack — Esc closes the most
+	// recently opened first). Like fieldValues it is user-interaction state:
+	// it survives Apply merges and is cleared by deleteSurface.
+	openModals []string
 
 	// compactOverride controls whether compact rendering is forced on,
 	// forced off, or decided automatically from the surface width.
@@ -211,13 +232,16 @@ func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *
 func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
-// cycle through buttons and input components. Enter activates the focused
-// button. When a text-editable component (TextField or DateTimeInput) holds
-// focus, rune key presses append to its value and backspace deletes the last
-// rune; Enter there is a no-op (there is no form-submit concept). A focused
-// CheckBox toggles on Space or Enter; a focused ChoicePicker moves its
-// highlight with Up/Down and toggles the highlighted option with Space; a
-// focused Slider steps with Left/Right.
+// cycle through buttons, input components, and modals. Enter activates the
+// focused button and toggles the focused modal open/closed; Esc closes the
+// most recently opened modal (and is otherwise ignored, so the host keeps its
+// Esc semantics when no modal is open — see HasOpenModal). When a
+// text-editable component (TextField or DateTimeInput) holds focus, rune key
+// presses append to its value and backspace deletes the last rune; Enter
+// there is a no-op (there is no form-submit concept). A focused CheckBox
+// toggles on Space or Enter; a focused ChoicePicker moves its highlight with
+// Up/Down and toggles the highlighted option with Space; a focused Slider
+// steps with Left/Right.
 //
 // Button activation emits two messages via tea.Batch:
 //   - event.ButtonClicked — the host-facing convenience event, carrying
@@ -248,8 +272,13 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		s.focusIdx = (s.focusIdx - 1 + len(s.focusables)) % len(s.focusables)
 	case "enter":
-		// Enter activates buttons and toggles checkboxes; on a text-editable
+		// Enter toggles a focused modal open/closed, activates a focused
+		// button, and toggles a focused checkbox; on a text-editable
 		// component it is a no-op.
+		if s.focusedIsModal() {
+			s.toggleModal(s.focusables[s.focusIdx])
+			return s, nil
+		}
 		if s.focusedIsButton() {
 			return s, s.activate()
 		}
@@ -284,6 +313,13 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "right":
 		if s.focusedIsSlider() {
 			s.stepSlider(1)
+		}
+	case "esc":
+		// Esc closes the most recently opened modal, returning focus to it
+		// (its trigger). With no modal open the key falls through untouched —
+		// in Standalone that means Esc quits, gated by the HasOpenModal probe.
+		if id, ok := s.closeTopModal(); ok {
+			s.refreshFocusables(id)
 		}
 	case "backspace":
 		if s.focusedIsTextEditable() {
@@ -382,9 +418,9 @@ func (s *Surface) isFocused(id string) bool {
 	return s.Focused() && len(s.focusables) > 0 && s.focusables[s.focusIdx] == id
 }
 
-// Focusables returns the IDs of interactive components (buttons and input
-// components) in depth-first focus-ring order. The host can use this to
-// inspect the focus ring; it is mainly intended for testing.
+// Focusables returns the IDs of interactive components (buttons, input
+// components, and modals) in depth-first focus-ring order. The host can use
+// this to inspect the focus ring; it is mainly intended for testing.
 func (s *Surface) Focusables() []string {
 	return s.focusables
 }
@@ -430,6 +466,12 @@ func (s *Surface) focusedIsChoicePicker() bool {
 func (s *Surface) focusedIsSlider() bool {
 	c := s.focusedComponent()
 	return c.Slider != nil
+}
+
+// focusedIsModal reports whether the currently focused component is a Modal.
+func (s *Surface) focusedIsModal() bool {
+	c := s.focusedComponent()
+	return c.Modal != nil
 }
 
 // EditingText reports whether the surface holds focus on a text-editable
@@ -541,19 +583,25 @@ func (s *Surface) compact() bool {
 	}
 }
 
-// isInteractive reports whether c joins the focus ring: Buttons and every
-// editable input component (TextField, CheckBox, ChoicePicker, Slider,
+// isInteractive reports whether c joins the focus ring: Buttons, Modals, and
+// every editable input component (TextField, CheckBox, ChoicePicker, Slider,
 // DateTimeInput).
 func isInteractive(c a2ui.Component) bool {
 	return c.Button != nil || c.TextField != nil || c.CheckBox != nil ||
-		c.ChoicePicker != nil || c.Slider != nil || c.DateTimeInput != nil
+		c.ChoicePicker != nil || c.Slider != nil || c.DateTimeInput != nil ||
+		c.Modal != nil
 }
 
 // collectFocusables walks the tree from the root and returns the IDs of
-// interactive components (buttons and input components) in depth-first order.
-// A component referenced by more than one parent (legal adjacency-list reuse)
-// is collected once — it is one interactive element however many times it is
-// drawn.
+// interactive components (buttons, input components, and modals) in
+// depth-first order. A component referenced by more than one parent (legal
+// adjacency-list reuse) is collected once — it is one interactive element
+// however many times it is drawn.
+//
+// A Modal is its own focusable: the trigger child is the modal's chrome (like
+// a button's label), so the trigger subtree never joins the ring separately —
+// Enter on the modal is what "activates the trigger". Content focusables are
+// reachable only while the modal is open, matching what is on screen.
 func (s *Surface) collectFocusables() []string {
 	var out []string
 	collected := map[string]bool{}
@@ -571,6 +619,12 @@ func (s *Surface) collectFocusables() []string {
 		if isInteractive(c) && !collected[c.ID] {
 			collected[c.ID] = true
 			out = append(out, c.ID)
+		}
+		if c.Modal != nil {
+			if s.modalOpen(c.ID) {
+				walk(c.Modal.Content, seen)
+			}
+			return
 		}
 		for _, child := range childIDs(c) {
 			walk(child, seen)
@@ -654,12 +708,12 @@ func (s *Surface) withWidth(w int, f func() string) string {
 	return f()
 }
 
-// renderChildren renders each child ID in a ChildList in order. The
-// dynamic-template form of ChildList is not yet supported (no data model);
-// it renders a single placeholder.
+// renderChildren renders a ChildList: each explicit child ID in order for the
+// static form, or one template-component instance per data-model list element
+// for the dynamic form (see renderTemplateChildren).
 func (s *Surface) renderChildren(cl a2ui.ChildList, seen map[string]bool) []string {
 	if cl.Template != nil {
-		return []string{s.styles.Caption.Render("[a2tea: dynamic children not yet supported]")}
+		return s.renderTemplateChildren(cl.Template, seen)
 	}
 	parts := make([]string, 0, len(cl.IDs))
 	for _, id := range cl.IDs {
@@ -676,14 +730,11 @@ func (s *Surface) dynString(d a2ui.DynamicString) string {
 	case d.Literal != nil:
 		return *d.Literal
 	case d.Binding != nil:
-		if s.data != nil {
-			key := strings.TrimPrefix(d.Binding.Path, "/")
-			if v, ok := s.data[key]; ok {
-				if str, ok := v.(string); ok {
-					return str
-				}
-				return fmt.Sprintf("%v", v)
+		if v, ok := s.lookupBinding(d.Binding.Path); ok {
+			if str, ok := v.(string); ok {
+				return str
 			}
+			return fmt.Sprintf("%v", v)
 		}
 		return "{binding}"
 	case d.FunctionCall != nil:
@@ -722,11 +773,11 @@ func childIDs(c a2ui.Component) []string {
 	case c.Button != nil:
 		return []string{c.Button.Child}
 	case c.Column != nil:
-		return c.Column.Children.IDs
+		return childListIDs(c.Column.Children)
 	case c.Row != nil:
-		return c.Row.Children.IDs
+		return childListIDs(c.Row.Children)
 	case c.List != nil:
-		return c.List.Children.IDs
+		return childListIDs(c.List.Children)
 	case c.Modal != nil:
 		return []string{c.Modal.Content, c.Modal.Trigger}
 	case c.Tabs != nil:

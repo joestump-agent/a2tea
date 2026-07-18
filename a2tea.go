@@ -153,8 +153,9 @@ func Render(msgs []a2ui.ServerMessage, opts ...render.Option) (tea.Model, error)
 
 // Standalone wraps a renderer so it can run as its own tea.Program. It owns the
 // two responsibilities a renderer deliberately does not: it quits on Ctrl+C or
-// Esc (and on q, unless the child reports it is editing a text field — then q
-// is typed), and it forwards terminal-size changes to the child via SetSize. Hosts
+// Esc (unless the child reports an open modal — then Esc closes the modal; and
+// on q, unless the child reports it is editing a text field — then q is
+// typed), and it forwards terminal-size changes to the child via SetSize. Hosts
 // that embed a renderer inside a larger TUI do NOT use this — they own quit and
 // lay out the child themselves. Standalone exists for examples and manual
 // testing of a single surface.
@@ -186,6 +187,14 @@ type editingTexter interface {
 	EditingText() bool
 }
 
+// openModaler is the optional probe Standalone uses to decide whether Esc
+// is a quit command or a close-the-modal command. render.Surface implements
+// it (HasOpenModal); when a modal is open, Esc is forwarded to the child so
+// the modal closes instead of the program quitting.
+type openModaler interface {
+	HasOpenModal() bool
+}
+
 func (m standaloneModel) Init() tea.Cmd {
 	cmd := m.child.Init()
 	if f, ok := m.child.(focuser); ok {
@@ -202,7 +211,14 @@ func (m standaloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc":
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			// Esc quits only when no modal is open: an open modal consumes
+			// Esc as its close command, so forward the key to the child.
+			if e, ok := m.child.(openModaler); ok && e.HasOpenModal() {
+				break
+			}
 			return m, tea.Quit
 		case "q":
 			// "q" quits only when it isn't text input: if the child reports
