@@ -251,6 +251,75 @@ func TestTabsHLStillTypeIntoTextField(t *testing.T) {
 	}
 }
 
+// TestTabsLeftRightDisambiguateSliderAndTabBar verifies the Left/Right
+// routing when both a slider and a tab bar are on the surface: the keys step
+// the slider while the slider holds focus, and switch tabs while the tab bar
+// holds focus — keyed off the focused component's type.
+func TestTabsLeftRightDisambiguateSliderAndTabBar(t *testing.T) {
+	comps := []a2ui.Component{
+		{ID: "tabs", Tabs: &a2ui.TabsComponent{Tabs: []a2ui.TabDef{
+			{Title: a2ui.StringLiteral("One"), Child: "sl"},
+			{Title: a2ui.StringLiteral("Two"), Child: "c2"},
+		}}},
+		sliderComp("sl", 0, 100, 50),
+		text("c2", "second content"),
+	}
+	s := render.NewSurface("s", comps)
+	s.Focus()
+
+	if got := s.Focusables(); len(got) != 2 || got[0] != "tabs" || got[1] != "sl" {
+		t.Fatalf("focusables = %v, want [tabs sl]", got)
+	}
+
+	// Focus the slider: Right steps it and must not switch tabs.
+	s.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	s.Update(keyPress(tea.KeyRight))
+	if v := s.FieldValues()["sl"]; v != 51.0 {
+		t.Fatalf("right on a focused slider should step it; FieldValues['sl'] = %v, want 51", v)
+	}
+	if got := s.ActiveTab("tabs"); got != 0 {
+		t.Fatalf("right on a focused slider must not switch tabs; ActiveTab = %d", got)
+	}
+
+	// Focus the tab bar: Right switches tabs and must not step the slider.
+	s.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // wraps back to the tab bar
+	s.Update(keyPress(tea.KeyRight))
+	if got := s.ActiveTab("tabs"); got != 1 {
+		t.Fatalf("right on the focused tab bar should switch tabs; ActiveTab = %d", got)
+	}
+	if v := s.FieldValues()["sl"]; v != 51.0 {
+		t.Fatalf("right on the tab bar must not step the slider; FieldValues['sl'] = %v, want 51", v)
+	}
+}
+
+// TestTabsInactiveTabExcludesInputsAndModals verifies that input components
+// and modals living inside an inactive tab are excluded from the focus ring,
+// and switching tabs swaps which of them are reachable.
+func TestTabsInactiveTabExcludesInputsAndModals(t *testing.T) {
+	val := a2ui.StringLiteral("hello")
+	comps := []a2ui.Component{
+		{ID: "tabs", Tabs: &a2ui.TabsComponent{Tabs: []a2ui.TabDef{
+			{Title: a2ui.StringLiteral("One"), Child: "tf"},
+			{Title: a2ui.StringLiteral("Two"), Child: "m"},
+		}}},
+		{ID: "tf", TextField: &a2ui.TextFieldComponent{Value: &val}},
+		{ID: "m", Modal: &a2ui.ModalComponent{Trigger: "trig", Content: "body"}},
+		text("trig", "open me"),
+		text("body", "modal body"),
+	}
+	s := render.NewSurface("s", comps)
+	s.Focus()
+
+	if got := s.Focusables(); len(got) != 2 || got[0] != "tabs" || got[1] != "tf" {
+		t.Fatalf("focusables = %v, want [tabs tf] (modal in inactive tab excluded)", got)
+	}
+
+	s.Update(keyPress(tea.KeyRight))
+	if got := s.Focusables(); len(got) != 2 || got[0] != "tabs" || got[1] != "m" {
+		t.Fatalf("focusables after switch = %v, want [tabs m] (text field in inactive tab excluded)", got)
+	}
+}
+
 // TestTabsDeleteSurfaceResetsActiveTab verifies deleteSurface wipes active-tab
 // state, so a re-created surface starts back on the first tab.
 func TestTabsDeleteSurfaceResetsActiveTab(t *testing.T) {

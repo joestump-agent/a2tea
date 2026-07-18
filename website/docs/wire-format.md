@@ -63,23 +63,26 @@ component tree from the root (the component nothing else references as a child).
 - Scan A2UI from LLM text (`<a2ui-json>` tags or bare JSON)
 - `Text` variants, `Card`, `Column`/`Row`/`List`, `Divider`
 - Focusable, styled `Button`s
-- Editable `TextField` (round-trips to the agent)
+- Editable inputs — all five: `TextField`, `CheckBox`, `ChoicePicker`,
+  `Slider`, and `DateTimeInput`. Edited values round-trip to the agent in
+  `ActionEvent.Context`
+- `ChildList` templates: the dynamic form expands one template instance per
+  element of the bound data-model list, with bindings inside each instance
+  resolving against that element first
+- `Modal`: `Enter` opens (content renders as a bordered in-flow block — the
+  honest terminal equivalent of an overlay), `Esc` closes the innermost open
+  modal
+- `createSurface` as a documented no-op: a surface is established by its first
+  `updateComponents`; theme hints and `catalogId` are deliberately ignored so
+  the host theme wins and the compiled-in catalog stays authoritative
 - Lifecycle: `updateComponents` / `updateDataModel` / `deleteSurface`
-- `event.ButtonClicked` + native `ClientMessage`
+- Events: `event.ButtonClicked` + native `ClientMessage`, `InputSubmitted`
+  (Enter on a `TextField` / `DateTimeInput`), and `ChoiceSelected` (a
+  `ChoicePicker` selection change, carrying `Values []string`)
 
 ### ✗ Not yet
 
 Each gap is tracked in the issue backlog:
 
-- `ChildList` templates (explicit ID lists only) —
-  [#44](https://github.com/joestump-agent/a2tea/issues/44)
-- `createSurface` theming / catalog —
-  [#47](https://github.com/joestump-agent/a2tea/issues/47)
 - Tab switching (first tab is active) —
   [#45](https://github.com/joestump-agent/a2tea/issues/45)
-- Modal content (trigger only) —
-  [#46](https://github.com/joestump-agent/a2tea/issues/46)
-- Editing beyond `TextField` —
-  [#42](https://github.com/joestump-agent/a2tea/issues/42)
-- `InputSubmitted` / `ChoiceSelected` events —
-  [#43](https://github.com/joestump-agent/a2tea/issues/43)

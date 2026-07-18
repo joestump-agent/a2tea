@@ -22,17 +22,23 @@ define its own component types. It parses A2UI out of model output with
 This repository is early, but rendering is now real for the core catalog:
 `Text` draws with its variant styles (headings, subheadings, captions), `Card`
 gets a rounded border, `Column`/`Row`/`List` lay out their children, `Divider`
-rules, and `Button`s render as styled, focusable chrome. The input components
-(`TextField`, `CheckBox`, `ChoicePicker`, `Slider`, `DateTimeInput`) are
-read-only visuals of their current values; media components (`Image`, `Icon`,
-`Video`, `AudioPlayer`) draw compact one-line placeholders; `Tabs` render their
-title bar plus the active tab's content — the tab bar joins the focus ring and
-`left`/`right` (or `h`/`l`) switch tabs — and `Modal` renders only its trigger.
+rules, and `Button`s render as styled, focusable chrome. All five input
+components (`TextField`, `CheckBox`, `ChoicePicker`, `Slider`,
+`DateTimeInput`) are focusable and editable, with edited values round-tripping
+to the agent; media components (`Image`, `Icon`, `Video`, `AudioPlayer`) draw
+compact one-line placeholders; `Tabs` render their title bar plus the active
+tab's content — the tab bar joins the focus ring and `left`/`right` (or
+`h`/`l`) switch tabs — and `Modal` opens on `Enter` (its content renders as a
+bordered in-flow block) and closes on `Esc`.
 
-Buttons are the first wired interaction: when the host gives a surface focus,
-`Tab` / `Shift+Tab` cycle its buttons and `Enter` emits `event.ButtonClicked`
-with `Source` context. Component chrome is deliberately monochrome — borders,
-bold, faint, and reverse-video focus — so the host's theme wins.
+Interaction is wired: when the host gives a surface focus, `Tab` / `Shift+Tab`
+cycle its focusables (buttons, inputs, modals, and tab bars), `Enter` on a
+button emits
+`event.ButtonClicked`, `Enter` on a `TextField` / `DateTimeInput` emits
+`event.InputSubmitted`, and a `ChoicePicker` selection change emits
+`event.ChoiceSelected` — each with `Source` context. Component chrome is
+deliberately monochrome — borders, bold, faint, and reverse-video focus — so
+the host's theme wins.
 
 ## Usage
 
@@ -70,7 +76,7 @@ terminal size. A runnable version of the whole flow lives in
 
 - `github.com/joestump-agent/a2tea` — public entry point: `Contains`, `Scan(reply) ([]Part, error)`, `Render(msgs) (tea.Model, error)`, and `Standalone`.
 - `github.com/joestump-agent/a2tea/render` — walks an A2UI surface (components referencing children by ID) into an embeddable `render.Model`.
-- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types a host can consume for interaction results (`ButtonClicked`, `InputSubmitted`, `ChoiceSelected`, `FormSubmitted`), each carrying `Source`. `ButtonClicked` is emitted when a focused button is activated; the rest are defined but not emitted yet.
+- `github.com/joestump-agent/a2tea/event` — outbound `tea.Msg` types a host can consume for interaction results (`ButtonClicked`, `InputSubmitted`, `ChoiceSelected`), each carrying `Source`. `ButtonClicked` is emitted when a focused button is activated; `InputSubmitted` when Enter confirms a focused `TextField`/`DateTimeInput` value; `ChoiceSelected` (carrying the full selection as `Values []string`) when a focused `ChoicePicker`'s selection changes. `FormSubmitted` is deprecated and never emitted.
 
 A2UI message and component types come from `github.com/tmc/a2ui`.
 
@@ -86,26 +92,22 @@ run a single surface on its own for examples and manual testing.
 
 The core catalog renders for real with `charm.land/lipgloss/v2` (see above).
 The message lifecycle is applied in order — `updateComponents` composites by
-component ID, `updateDataModel` resolves `DynamicString` bindings,
-`deleteSurface` clears the surface — `TextField` is editable (typed edits
-update state and flow into `ActionEvent.Context`), and button activation sends
-a protocol-native `a2ui.ClientMessage` back to the agent with `Name`,
-`SurfaceID`, `SourceComponentID`, and a populated `Context`.
+component ID, `updateDataModel` resolves `DynamicString` bindings (including
+`ChildList` template expansion from bound lists), `deleteSurface` clears the
+surface, and `createSurface` is a documented no-op (host theming and the
+compiled-in catalog win). All five input components are editable, with edits
+flowing into `ActionEvent.Context`; button activation sends a protocol-native
+`a2ui.ClientMessage` back to the agent with `Name`, `SurfaceID`,
+`SourceComponentID`, and a populated `Context`; and `InputSubmitted` /
+`ChoiceSelected` are dispatched alongside `ButtonClicked`.
 
 What is **not** yet implemented:
 
-- **`ChildList` templates.** Children resolve from explicit ID lists only;
-  the dynamic template form is not expanded.
-- **`createSurface` theming/catalog.** The message is ignored — a surface is
-  established by its first `updateComponents`, and theme/catalog payloads are
-  not applied.
-- **Modal content.** A modal renders only its trigger; its content stays
-  hidden.
-- **Editing beyond `TextField`.** `CheckBox`/`ChoicePicker`/`Slider`/
-  `DateTimeInput` remain read-only visuals.
-- **The remaining host-facing events.** `InputSubmitted`/`ChoiceSelected` are
-  defined but never dispatched; `event.ButtonClicked` is the only host-facing
-  event emitted.
+- Nothing currently tracked — the earlier wire-format gaps (`ChildList`
+  templates, `createSurface`, modal content, input editing, event dispatch,
+  and tab switching — issues
+  [#42–#47](https://github.com/joestump-agent/a2tea/issues)) have all landed.
+  New gaps get tickets as they are found.
 
 ## Versioning
 

@@ -3,11 +3,11 @@
 // component tree with lipgloss.
 //
 // Rendering is real for the core catalog: Text (with variants), Card, Column,
-// Row, List, Divider, Button, and read-only visuals for the input components
+// Row, List, Divider, Button, and editable visuals for the input components
 // (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput). Tabs render a
 // title bar plus the active tab's content. Media components (Image, Icon,
-// Video, AudioPlayer) draw compact placeholders, as does Modal. DynamicString
-// data bindings render as placeholders until the data model lands.
+// Video, AudioPlayer) draw compact placeholders. DynamicString data bindings
+// render as placeholders until the data model lands.
 //
 // Interaction: Buttons are focusable. When the host grants the surface focus,
 // Tab / Shift+Tab cycle the buttons and Enter activates the focused button.
@@ -16,13 +16,27 @@
 // a2ui.ClientMessage whose ActionEvent carries Name, SurfaceID, and
 // SourceComponentID. FunctionCall-only buttons emit no ClientMessage.
 //
-// TextFields are editable: they join Buttons in the focus ring, and when one
-// holds focus printable keys append to its value and backspace deletes. Typed
-// values are read back via FieldValues and flow into a button's ActionEvent
-// Context. Tab bars also join the focus ring: when one holds focus, Left /
-// Right (or h / l) switch the active tab, and the active tab survives
-// Apply merges the same way focus does. Other input components (CheckBox,
-// ChoicePicker, Slider, DateTimeInput) remain read-only visuals for now.
+// Input components are editable and join Buttons in the focus ring. A focused
+// TextField (and DateTimeInput, which shares the same rune-edit path against
+// its string value) accepts printable keys and backspace, and Enter emits
+// event.InputSubmitted with the field's current value. A focused CheckBox
+// toggles with Space or Enter. A focused ChoicePicker moves its highlight with
+// Up/Down and toggles the highlighted option with Space, emitting
+// event.ChoiceSelected whenever the selection set changes. A focused Slider
+// steps with Left/Right within its min/max bounds. Edited values are read back
+// via FieldValues and flow into a button's ActionEvent Context.
+//
+// Tab bars also join the focus ring: when one holds focus, Left / Right (or
+// h / l) switch the active tab, and the active tab survives Apply merges the
+// same way focus does. Only the active tab's subtree joins the ring — focus
+// never lands on a component hidden inside an inactive tab.
+//
+// Modals open and close: a Modal joins the focus ring as a single element
+// drawn as its trigger, Enter toggles it open, and Esc closes the most
+// recently opened modal. Open content renders as a bordered in-flow block —
+// the honest terminal equivalent of an overlay — and its focusables join the
+// ring only while it is open. Hosts use HasOpenModal to keep Esc routed to
+// the surface while a modal is up (mirroring the EditingText probe).
 //
 // Composition contract. A renderer is designed to be embedded as a child of a
 // larger TUI (crush), not to be the root of its own program:
@@ -123,9 +137,17 @@ type Surface struct {
 	// bound DynamicString/Value components at render time.
 	data map[string]any
 
-	// focusables are the IDs of interactive components (buttons, text
-	// fields, and tab bars) in depth-first tree order; focusIdx points at
-	// the one holding focus.
+	// scope is the stack of data-model elements for the ChildList template
+	// instances currently being rendered: renderTemplateChildren pushes each
+	// list element before rendering the template component and pops it after,
+	// so bindings inside the instance resolve against that element first (see
+	// lookupBinding). Empty outside template expansion. Rendering is a
+	// single-goroutine depth-first pass, so the push/pop is safe.
+	scope []any
+
+	// focusables are the IDs of interactive components (buttons, input
+	// components, modals, and tab bars) in depth-first tree order; focusIdx
+	// points at the one holding focus.
 	focusables []string
 	focusIdx   int
 
@@ -137,11 +159,36 @@ type Surface struct {
 	// below a previously selected index falls back to the first tab.
 	activeTabs map[string]int
 
-	// fieldValues holds the edited text of TextField components, keyed by
-	// component ID. It is lazily initialized on first edit. An entry here
-	// shadows the component's static literal value for both rendering and
-	// value readout (gatherFieldValues / FieldValues).
+	// fieldValues holds the edited text of TextField and DateTimeInput
+	// components, keyed by component ID. It is lazily initialized on first
+	// edit. An entry here shadows the component's static literal value for
+	// both rendering and value readout (gatherFieldValues / FieldValues).
 	fieldValues map[string]string
+
+	// checkValues holds the toggled state of CheckBox components, keyed by
+	// component ID. Lazily initialized on first toggle; an entry shadows the
+	// component's static literal, mirroring fieldValues.
+	checkValues map[string]bool
+
+	// choiceValues holds the edited selection of ChoicePicker components,
+	// keyed by component ID. The value is the selected option values in
+	// option-declaration order. An entry shadows the static literal.
+	choiceValues map[string][]string
+
+	// sliderValues holds the adjusted value of Slider components, keyed by
+	// component ID. An entry shadows the static literal.
+	sliderValues map[string]float64
+
+	// choiceCursor holds each ChoicePicker's highlighted option index, keyed
+	// by component ID. It is presentation state, not a value: it never flows
+	// into FieldValues or ActionEvent.Context.
+	choiceCursor map[string]int
+
+	// openModals holds the component IDs of Modal components currently
+	// open, in the order they were opened (a stack — Esc closes the most
+	// recently opened first). Like fieldValues it is user-interaction state:
+	// it survives Apply merges and is cleared by deleteSurface.
+	openModals []string
 
 	// compactOverride controls whether compact rendering is forced on,
 	// forced off, or decided automatically from the surface width.
@@ -200,11 +247,20 @@ func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *
 func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
-// cycle through buttons, text fields, and tab bars. Enter activates the
-// focused button. When a text field holds focus, rune key presses append to
-// its value and backspace deletes the last rune; Enter on a text field is a
-// no-op (there is no form-submit concept). When a tab bar holds focus, Left /
-// Right (or h / l) switch its active tab.
+// cycle through buttons, input components, modals, and tab bars. Enter
+// activates the focused button and toggles the focused modal open/closed; Esc
+// closes the most recently opened modal (and is otherwise ignored, so the
+// host keeps its Esc semantics when no modal is open — see HasOpenModal).
+// When a text-editable component (TextField or DateTimeInput) holds focus,
+// rune key presses append to its value, backspace deletes the last rune, and
+// Enter emits event.InputSubmitted carrying the field's current value. A
+// focused CheckBox toggles on Space or Enter; a focused ChoicePicker moves
+// its highlight with Up/Down and toggles the highlighted option with Space,
+// emitting event.ChoiceSelected when the selection set changes; a focused
+// Slider steps with Left/Right. When a tab bar holds focus, Left / Right (or
+// h / l) switch its active tab; h and l reach the tab bar only when it is the
+// focused component — on a focused text-editable component they are literal
+// runes.
 //
 // Button activation emits two messages via tea.Batch:
 //   - event.ButtonClicked — the host-facing convenience event, carrying
@@ -235,36 +291,90 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		s.focusIdx = (s.focusIdx - 1 + len(s.focusables)) % len(s.focusables)
 	case "enter":
-		// Enter only activates buttons; on a text field it is a no-op.
+		// Enter toggles a focused modal open/closed, activates a focused
+		// button, submits a focused text-editable component's value, and
+		// toggles a focused checkbox.
+		if s.focusedIsModal() {
+			s.toggleModal(s.focusables[s.focusIdx])
+			return s, nil
+		}
 		if s.focusedIsButton() {
 			return s, s.activate()
 		}
+		if s.focusedIsTextEditable() {
+			return s, s.submitInput()
+		}
+		if s.focusedIsCheckBox() {
+			s.toggleCheckBox()
+		}
+	case "space":
+		// Space is a command on toggleable components and text input on
+		// text-editable ones. Key.String() reports "space" (never " "), so
+		// the text-input branch cannot be reached from the default case and
+		// must be handled here.
+		switch {
+		case s.focusedIsCheckBox():
+			s.toggleCheckBox()
+		case s.focusedIsChoicePicker():
+			return s, s.togglePickerOption()
+		case s.focusedIsTextEditable():
+			s.appendText(" ")
+		}
+	case "up":
+		if s.focusedIsChoicePicker() {
+			s.movePickerCursor(-1)
+		}
+	case "down":
+		if s.focusedIsChoicePicker() {
+			s.movePickerCursor(1)
+		}
+	case "left":
+		// Left steps a focused slider down and switches a focused tab bar
+		// to the previous tab; the focused component type disambiguates.
+		if s.focusedIsSlider() {
+			s.stepSlider(-1)
+		} else if s.focusedIsTabs() {
+			s.switchTab(-1)
+		}
+	case "right":
+		if s.focusedIsSlider() {
+			s.stepSlider(1)
+		} else if s.focusedIsTabs() {
+			s.switchTab(1)
+		}
+	case "esc":
+		// Esc closes the most recently opened modal, returning focus to it
+		// (its trigger). With no modal open the key falls through untouched —
+		// in Standalone that means Esc quits, gated by the HasOpenModal probe.
+		if id, ok := s.closeTopModal(); ok {
+			s.refreshFocusables(id)
+		}
 	case "backspace":
-		if s.focusedIsTextField() {
+		if s.focusedIsTextEditable() {
 			s.deleteRune()
 		}
-	case "left", "h":
-		// On a focused tab bar these switch tabs; otherwise "h" falls
-		// through to text-field editing ("left" has empty key.Text, so the
-		// append guard makes it a no-op there).
+	case "h":
+		// On a focused tab bar h/l switch tabs (vim-style aliases for
+		// Left/Right); on a focused text-editable component they are
+		// literal runes and the rune-edit path wins.
 		if s.focusedIsTabs() {
 			s.switchTab(-1)
-		} else if s.focusedIsTextField() && key.Text != "" {
+		} else if s.focusedIsTextEditable() && key.Text != "" {
 			s.appendText(key.Text)
 		}
-	case "right", "l":
+	case "l":
 		if s.focusedIsTabs() {
 			s.switchTab(1)
-		} else if s.focusedIsTextField() && key.Text != "" {
+		} else if s.focusedIsTextEditable() && key.Text != "" {
 			s.appendText(key.Text)
 		}
 	default:
-		// Printable key presses edit the focused text field. key.Text is the
-		// actual characters produced by the key — it already accounts for
-		// Shift (so "A" and "!" arrive as text) and is empty for navigation
-		// and control keys (arrows, Home/End, F-keys), whose Code is a
-		// sentinel above unicode.MaxRune that must never be inserted.
-		if s.focusedIsTextField() && key.Text != "" {
+		// Printable key presses edit the focused text-editable component.
+		// key.Text is the actual characters produced by the key — it already
+		// accounts for Shift (so "A" and "!" arrive as text) and is empty for
+		// navigation and control keys (arrows, Home/End, F-keys), whose Code
+		// is a sentinel above unicode.MaxRune that must never be inserted.
+		if s.focusedIsTextEditable() && key.Text != "" {
 			s.appendText(key.Text)
 		}
 	}
@@ -337,6 +447,26 @@ func (s *Surface) activate() tea.Cmd {
 	)
 }
 
+// submitInput dispatches event.InputSubmitted for the focused text-editable
+// component (TextField or DateTimeInput). Value follows the same shadowing
+// rule as rendering and FieldValues: the edited value when the user has
+// typed, else the field's literal or resolved data-model seed (editSeed) — so
+// an unedited field submits its pre-filled content and an unresolved binding
+// submits "" rather than leaking a display placeholder.
+func (s *Surface) submitInput() tea.Cmd {
+	id := s.focusables[s.focusIdx]
+	v, ok := s.fieldValues[id]
+	if !ok {
+		v = s.editSeed(id)
+	}
+	submitted := event.InputSubmitted{
+		Source: event.Source{ComponentID: id, SurfaceID: s.id},
+		ID:     id,
+		Value:  v,
+	}
+	return func() tea.Msg { return submitted }
+}
+
 // View implements tea.Model.
 func (s *Surface) View() tea.View {
 	if s.rootID == "" {
@@ -351,8 +481,9 @@ func (s *Surface) isFocused(id string) bool {
 	return s.Focused() && len(s.focusables) > 0 && s.focusables[s.focusIdx] == id
 }
 
-// Focusables returns the IDs of interactive components (buttons, text
-// fields, and tab bars) in depth-first focus-ring order. The host can use
+// Focusables returns the IDs of interactive components (buttons, input
+// components, modals, and tab bars) in depth-first focus-ring order. The host
+// can use
 // this to inspect the focus ring; it is mainly intended for testing.
 func (s *Surface) Focusables() []string {
 	return s.focusables
@@ -373,11 +504,38 @@ func (s *Surface) focusedIsButton() bool {
 	return c.Button != nil
 }
 
-// focusedIsTextField reports whether the currently focused component is a
-// TextField.
-func (s *Surface) focusedIsTextField() bool {
+// focusedIsTextEditable reports whether the currently focused component takes
+// the rune-edit path: a TextField, or a DateTimeInput (whose string value is
+// edited the same way).
+func (s *Surface) focusedIsTextEditable() bool {
 	c := s.focusedComponent()
-	return c.TextField != nil
+	return c.TextField != nil || c.DateTimeInput != nil
+}
+
+// focusedIsCheckBox reports whether the currently focused component is a
+// CheckBox.
+func (s *Surface) focusedIsCheckBox() bool {
+	c := s.focusedComponent()
+	return c.CheckBox != nil
+}
+
+// focusedIsChoicePicker reports whether the currently focused component is a
+// ChoicePicker.
+func (s *Surface) focusedIsChoicePicker() bool {
+	c := s.focusedComponent()
+	return c.ChoicePicker != nil
+}
+
+// focusedIsSlider reports whether the currently focused component is a Slider.
+func (s *Surface) focusedIsSlider() bool {
+	c := s.focusedComponent()
+	return c.Slider != nil
+}
+
+// focusedIsModal reports whether the currently focused component is a Modal.
+func (s *Surface) focusedIsModal() bool {
+	c := s.focusedComponent()
+	return c.Modal != nil
 }
 
 // focusedIsTabs reports whether the currently focused component is a Tabs
@@ -439,25 +597,34 @@ func (s *Surface) ActiveTab(id string) int {
 	return s.activeTab(id, len(c.Tabs.Tabs))
 }
 
-// EditingText reports whether the surface holds focus on an editable text
-// field, i.e. printable key presses are currently text input rather than
-// commands. Hosts (and a2tea.Standalone) use this to decide whether keys
-// like "q" should quit or be typed.
+// EditingText reports whether the surface holds focus on a text-editable
+// component (TextField or DateTimeInput), i.e. printable key presses are
+// currently text input rather than commands. Hosts (and a2tea.Standalone) use
+// this to decide whether keys like "q" should quit or be typed.
 func (s *Surface) EditingText() bool {
-	return s.Focused() && s.focusedIsTextField()
+	return s.Focused() && s.focusedIsTextEditable()
 }
 
-// editSeed returns the text an edit of the given TextField starts from: its
-// literal value, or its binding's resolved data-model value, or "" when the
-// value is absent or unresolved. A display placeholder like "{binding}" or
-// "{fn}" is rendering chrome, not field content — it must never leak into
-// edits, FieldValues, or the ActionEvent.Context round-tripped to the agent.
+// editSeed returns the text an edit of the given TextField or DateTimeInput
+// starts from: its literal value, or its binding's resolved data-model value,
+// or "" when the value is absent or unresolved. A display placeholder like
+// "{binding}" or "{fn}" is rendering chrome, not field content — it must never
+// leak into edits, FieldValues, or the ActionEvent.Context round-tripped to
+// the agent.
 func (s *Surface) editSeed(id string) string {
 	c, ok := s.byID[id]
-	if !ok || c.TextField == nil || c.TextField.Value == nil {
+	if !ok {
 		return ""
 	}
-	d := *c.TextField.Value
+	var d a2ui.DynamicString
+	switch {
+	case c.TextField != nil && c.TextField.Value != nil:
+		d = *c.TextField.Value
+	case c.DateTimeInput != nil:
+		d = c.DateTimeInput.Value
+	default:
+		return ""
+	}
 	switch {
 	case d.Literal != nil:
 		return *d.Literal
@@ -474,8 +641,8 @@ func (s *Surface) editSeed(id string) string {
 	return ""
 }
 
-// appendText appends printable text to the focused text field's edited value,
-// lazily initializing the fieldValues map on first edit. On the first edit,
+// appendText appends printable text to the focused text-editable component's
+// edited value, lazily initializing the fieldValues map on first edit. On the first edit,
 // the field's current content (literal or resolved binding, via editSeed) is
 // used as the starting point so typed characters extend the existing text.
 // The argument is key.Text — the characters the key produced — which may be
@@ -491,7 +658,8 @@ func (s *Surface) appendText(text string) {
 	s.fieldValues[id] += text
 }
 
-// deleteRune removes the last rune from the focused text field's edited value.
+// deleteRune removes the last rune from the focused text-editable component's
+// edited value.
 // On the first edit of a pristine field it seeds from the literal, so backspace
 // can shorten (and ultimately clear) a pre-filled default — not just text the
 // user typed this session. If the value drops back to exactly the original
@@ -538,16 +706,32 @@ func (s *Surface) compact() bool {
 	}
 }
 
+// isInteractive reports whether c joins the focus ring: Buttons, Modals,
+// every editable input component (TextField, CheckBox, ChoicePicker, Slider,
+// DateTimeInput), and Tabs bars (unless the tab list is empty — a bar with
+// nothing to switch is not interactive).
+func isInteractive(c a2ui.Component) bool {
+	return c.Button != nil || c.TextField != nil || c.CheckBox != nil ||
+		c.ChoicePicker != nil || c.Slider != nil || c.DateTimeInput != nil ||
+		c.Modal != nil || (c.Tabs != nil && len(c.Tabs.Tabs) > 0)
+}
+
 // collectFocusables walks the tree from the root and returns the IDs of
-// interactive components (buttons, text fields, and tab bars) in depth-first
-// order. A component referenced by more than one parent (legal adjacency-list
-// reuse) is collected once — it is one interactive element however many times
-// it is drawn.
+// interactive components (buttons, input components, modals, and tab bars) in
+// depth-first order. A component referenced by more than one parent (legal
+// adjacency-list reuse) is collected once — it is one interactive element
+// however many times it is drawn.
 //
 // A Tabs component contributes its own ID (the tab bar is focusable, unless
 // it has no tabs to switch) and then only its ACTIVE tab's subtree: focus
-// must never land on a component hidden inside an inactive tab. switchTab
-// re-collects the ring after every switch to keep it in step.
+// must never land on a component hidden inside an inactive tab — buttons,
+// inputs, and modals in inactive tabs are all excluded. switchTab re-collects
+// the ring after every switch to keep it in step.
+//
+// A Modal is its own focusable: the trigger child is the modal's chrome (like
+// a button's label), so the trigger subtree never joins the ring separately —
+// Enter on the modal is what "activates the trigger". Content focusables are
+// reachable only while the modal is open, matching what is on screen.
 func (s *Surface) collectFocusables() []string {
 	var out []string
 	collected := map[string]bool{}
@@ -562,17 +746,23 @@ func (s *Surface) collectFocusables() []string {
 		if !ok {
 			return
 		}
-		if (c.Button != nil || c.TextField != nil) && !collected[c.ID] {
+		if isInteractive(c) && !collected[c.ID] {
 			collected[c.ID] = true
 			out = append(out, c.ID)
 		}
 		if c.Tabs != nil {
+			// Only the ACTIVE tab's subtree joins the ring; components
+			// hidden in inactive tabs must not be focusable.
 			if tabs := c.Tabs.Tabs; len(tabs) > 0 {
-				if !collected[c.ID] {
-					collected[c.ID] = true
-					out = append(out, c.ID)
-				}
 				walk(tabs[s.activeTab(c.ID, len(tabs))].Child, seen)
+			}
+			return
+		}
+		if c.Modal != nil {
+			// Content focusables join the ring only while the modal is
+			// open; the trigger subtree never joins separately.
+			if s.modalOpen(c.ID) {
+				walk(c.Modal.Content, seen)
 			}
 			return
 		}
@@ -658,12 +848,12 @@ func (s *Surface) withWidth(w int, f func() string) string {
 	return f()
 }
 
-// renderChildren renders each child ID in a ChildList in order. The
-// dynamic-template form of ChildList is not yet supported (no data model);
-// it renders a single placeholder.
+// renderChildren renders a ChildList: each explicit child ID in order for the
+// static form, or one template-component instance per data-model list element
+// for the dynamic form (see renderTemplateChildren).
 func (s *Surface) renderChildren(cl a2ui.ChildList, seen map[string]bool) []string {
 	if cl.Template != nil {
-		return []string{s.styles.Caption.Render("[a2tea: dynamic children not yet supported]")}
+		return s.renderTemplateChildren(cl.Template, seen)
 	}
 	parts := make([]string, 0, len(cl.IDs))
 	for _, id := range cl.IDs {
@@ -680,14 +870,11 @@ func (s *Surface) dynString(d a2ui.DynamicString) string {
 	case d.Literal != nil:
 		return *d.Literal
 	case d.Binding != nil:
-		if s.data != nil {
-			key := strings.TrimPrefix(d.Binding.Path, "/")
-			if v, ok := s.data[key]; ok {
-				if str, ok := v.(string); ok {
-					return str
-				}
-				return fmt.Sprintf("%v", v)
+		if v, ok := s.lookupBinding(d.Binding.Path); ok {
+			if str, ok := v.(string); ok {
+				return str
 			}
+			return fmt.Sprintf("%v", v)
 		}
 		return "{binding}"
 	case d.FunctionCall != nil:
@@ -726,11 +913,11 @@ func childIDs(c a2ui.Component) []string {
 	case c.Button != nil:
 		return []string{c.Button.Child}
 	case c.Column != nil:
-		return c.Column.Children.IDs
+		return childListIDs(c.Column.Children)
 	case c.Row != nil:
-		return c.Row.Children.IDs
+		return childListIDs(c.Row.Children)
 	case c.List != nil:
-		return c.List.Children.IDs
+		return childListIDs(c.List.Children)
 	case c.Modal != nil:
 		return []string{c.Modal.Content, c.Modal.Trigger}
 	case c.Tabs != nil:

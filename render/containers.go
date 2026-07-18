@@ -120,13 +120,38 @@ func (s *Surface) renderTabs(c a2ui.Component, seen map[string]bool) string {
 	return strings.Join(titles, " │ ") + "\n" + s.renderComponent(tabs[active].Child, seen)
 }
 
-// renderModal renders a Modal component: the trigger child plus a faint note
-// that the modal content stays hidden until interaction support lands. Content
-// is deliberately not rendered — a closed modal shows only its trigger.
+// renderModal renders a Modal component. The modal itself is the focusable
+// element; its trigger child draws as the modal's chrome behind a cue glyph —
+// "▹" idle, "▸" when the modal holds focus (the same glyph-swap convention as
+// TextField's input cue). Closed, only the cued trigger renders. Open (Enter
+// on the focused modal), the content child renders below the trigger as a
+// bordered in-flow block: a true overlay is out of scope for a string-rendered
+// surface, so in-flow expansion is the honest terminal equivalent. Esc closes
+// (see Surface.Update).
+//
+// The content border reuses the CardBorder chrome and the same width
+// budgeting as renderCard, but it is NOT dropped in compact mode — the border
+// is the only signifier separating modal content from the surrounding flow.
 func (s *Surface) renderModal(c a2ui.Component, seen map[string]bool) string {
-	trigger := s.renderComponent(c.Modal.Trigger, seen)
-	note := s.styles.Caption.Render("[a2tea: modal content hidden until interaction support lands]")
-	return trigger + "\n" + note
+	cue := "▹ "
+	if s.isFocused(c.ID) {
+		cue = "▸ "
+	}
+	trigger := cue + s.renderComponent(c.Modal.Trigger, seen)
+	if !s.modalOpen(c.ID) {
+		return trigger
+	}
+	if s.width <= 0 {
+		return trigger + "\n" + s.styles.CardBorder.Render(s.renderComponent(c.Modal.Content, seen))
+	}
+	w := s.width - 4
+	if w < 1 {
+		w = 1
+	}
+	inner := s.withWidth(w, func() string {
+		return s.renderComponent(c.Modal.Content, seen)
+	})
+	return trigger + "\n" + s.styles.CardBorder.Render(wrapTo(inner, w))
 }
 
 // joinRow joins pre-rendered blocks horizontally, top-aligned, with a

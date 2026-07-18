@@ -35,15 +35,23 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `Text` with its variant styles (h1–h3 heading, h4–h5 subheading, caption),
   `Card` in a rounded border, `Column`/`Row`/`List` layout, `Divider`, and
   styled focusable `Button`s.
-- Input components: `TextField` is editable — a focused field accepts typed
-  edits that update its state and flow into `ActionEvent.Context` — while
-  `CheckBox`, `ChoicePicker`, `Slider`, and `DateTimeInput` are read-only
-  visuals that draw their current values.
+- Input components: all five are focusable and editable. `TextField` and
+  `DateTimeInput` accept typed edits, `CheckBox` toggles on Space/Enter,
+  `ChoicePicker` moves a highlight with Up/Down and toggles options with Space
+  (radio semantics for single-select), and `Slider` steps with Left/Right
+  within `[min, max]`. Edited values shadow the static literals and flow into
+  `ActionEvent.Context`.
 - Compact placeholders for media (`Image`, `Icon`, `Video`, `AudioPlayer`);
-  `Tabs` render their title bar plus the active tab's content; `Modal` renders
-  only its trigger.
-- The first wired event: when the host focuses a surface, `Tab` / `Shift+Tab`
-  cycle its focusables (buttons, text fields, and tab bars) and `Enter`
+  `Tabs` render their title bar plus the active tab's content.
+- `Modal` opens and closes: the modal joins the focus ring as a single element
+  drawn as its trigger, `Enter` toggles it open, and `Esc` closes the most
+  recently opened modal. Open content renders as a bordered in-flow block (the
+  honest terminal equivalent of an overlay) whose focusables join the ring only
+  while open; open state survives `updateComponents` merges. Hosts use
+  `Surface.HasOpenModal` to keep `Esc` routed to the surface while a modal is
+  up (`a2tea.Standalone` does this before its esc-quit).
+- Wired events: when the host focuses a surface, `Tab` / `Shift+Tab` cycle its
+  focusables (buttons, all input components, modals, and tab bars) and `Enter`
   activates the focused button. Activation emits
   `event.ButtonClicked` (carrying the resolved `*a2ui.EventAction`) and, when
   the button has a server-side `Action.Event`, a protocol-native
@@ -51,6 +59,11 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `SourceComponentID`, and `Context`. `FunctionCall`-only buttons emit no
   `ClientMessage`.
   The `ActionEvent.Timestamp` is left empty for the host to stamp.
+  `Enter` on a focused `TextField` / `DateTimeInput` emits
+  `event.InputSubmitted` with the field's current value, and a `ChoicePicker`
+  selection change emits `event.ChoiceSelected` with the full post-change
+  selection as `Values []string` in option-declaration order (no emit when the
+  selection is unchanged). All three events carry `Source`.
 - Deliberately monochrome chrome (borders, bold, faint, reverse-video focus)
   so the host theme wins.
 
@@ -62,19 +75,29 @@ Also implemented since earlier revisions of this doc:
   surface.
 - `ActionEvent.Context` is populated from the surface's input component
   values, so typed `TextField` edits round-trip to the agent.
-- Tab switching: the tab bar joins the focus ring; `left`/`right` (or
-  `h`/`l`) switch the active tab, active-tab state survives
-  `updateComponents` merges the same way focus does, and an index left
-  out-of-range by a shrunken tab list clamps back to the first tab.
+- `ChildList` templates: the dynamic template form expands one instance of
+  the template component per element of the bound data-model list, with
+  bindings inside each instance resolving against that element first (an
+  empty path or `/` is the element itself) before falling back to the
+  surface data model. An `updateDataModel` on the list grows or shrinks the
+  children on the next render.
+- `createSurface` is an explicit, documented no-op (a2tea issue #47): a
+  surface is established by its first `updateComponents`, so the message
+  carries nothing a2tea needs. Its `theme` hints (`primaryColor`, `iconUrl`,
+  `agentDisplayName`) are ignored in favor of host theming via `WithStyles` —
+  chrome is deliberately monochrome so the host theme wins — and its
+  `catalogId` is ignored because a2tea's component catalog is the compiled-in
+  one, by design. `Apply` handles the message with an explicit no-op case
+  rather than silently falling through.
+- Tab switching (a2tea issue #45): the tab bar joins the focus ring;
+  `left`/`right` (or `h`/`l` when the tab bar is focused) switch the active
+  tab, active-tab state survives `updateComponents` merges the same way focus
+  does, and an index left out-of-range by a shrunken tab list clamps back to
+  the first tab. Components inside inactive tabs are excluded from the focus
+  ring.
 
 **Not yet** (tracked as follow-ups)
-- `ChildList` templates: children resolve from explicit ID lists only; the
-  dynamic template form is not expanded.
-- `createSurface` theming/catalog: the message is ignored — a surface is
-  established by its first `updateComponents`, and theme/catalog payloads are
-  not applied.
-- Modal content: a modal renders only its trigger; its content stays hidden.
-- Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
-  `DateTimeInput` remain read-only visuals.
-- The remaining host-facing event types: `InputSubmitted`/`ChoiceSelected`
-  are defined but never dispatched.
+- Nothing currently tracked — the earlier gaps (`ChildList` templates,
+  `createSurface`, modal content, input editing, `InputSubmitted`/
+  `ChoiceSelected` dispatch, and tab switching, issues #42–#47) have all
+  landed. New gaps get tickets as they are found.

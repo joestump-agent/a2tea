@@ -18,6 +18,13 @@ import (
 // destructive, it fires only on an exact SurfaceID match, never on an empty
 // one.
 //
+// createSurface is deliberately a no-op. a2tea treats the first
+// updateComponents as implicit surface creation, and the hints createSurface
+// carries have no honorable mapping here: theme (primaryColor, iconUrl,
+// agentDisplayName) is superseded by host theming via WithStyles — component
+// chrome stays monochrome so the host theme wins — and catalogId is ignored
+// because a2tea's catalog is the compiled-in one, by design.
+//
 // deleteSurface clears all surface state (components, data model, edits,
 // focus, active tabs) but processing continues: a later updateComponents in
 // the same batch legally re-creates the surface.
@@ -28,6 +35,11 @@ import (
 func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 	for _, m := range msgs {
 		switch {
+		case m.CreateSurface != nil:
+			// Deliberate no-op: surface creation is implied by the first
+			// updateComponents, host WithStyles owns theming, and the
+			// component catalog is compiled in. See the Apply doc comment
+			// and docs/wire-format.md.
 		case m.UpdateComponents != nil:
 			if !s.targetsThisSurface(m.UpdateComponents.SurfaceID) {
 				continue
@@ -46,6 +58,11 @@ func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 				s.focusIdx = 0
 				s.data = nil
 				s.fieldValues = nil
+				s.checkValues = nil
+				s.choiceValues = nil
+				s.sliderValues = nil
+				s.choiceCursor = nil
+				s.openModals = nil
 				s.activeTabs = nil
 			}
 		}
@@ -64,10 +81,12 @@ func (s *Surface) targetsThisSurface(surfaceID string) bool {
 // applyComponents merges the given components into the surface's component map
 // by ID: an update to component X replaces X, leaving siblings intact. It
 // re-derives the root and focus ring, preserving focus on the same component
-// if it survives the merge. Active-tab state (s.activeTabs) is deliberately
-// left untouched — like focus, it is user state the server must not clobber —
-// and out-of-range indices left behind by a shrunken tab list are clamped at
-// read time by activeTab.
+// if it survives the merge. Modal open state also survives the merge — only
+// entries whose component stopped being a modal are pruned — so an update
+// does not slam an open modal shut under the user. Active-tab state
+// (s.activeTabs) is likewise deliberately left untouched — like focus, it is
+// user state the server must not clobber — and out-of-range indices left
+// behind by a shrunken tab list are clamped at read time by activeTab.
 func (s *Surface) applyComponents(components []a2ui.Component) {
 	// Remember which component held focus before the merge.
 	var focusedID string
@@ -79,6 +98,7 @@ func (s *Surface) applyComponents(components []a2ui.Component) {
 		s.byID[c.ID] = c
 	}
 	s.rootID = s.deriveRootID()
+	s.pruneOpenModals()
 	s.focusables = s.collectFocusables()
 
 	// Preserve focus if the focused component survives.

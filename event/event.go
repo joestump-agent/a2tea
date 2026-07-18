@@ -3,20 +3,21 @@
 // through the standard bubbletea Update loop, and the consuming agent picks
 // them up from there.
 //
-// Status. ButtonClicked is emitted by the surface renderer and now carries the
-// button's resolved *a2ui.EventAction (nil for buttons with no server event).
-// Alongside it the renderer emits a native a2ui.ClientMessage whose
-// ActionEvent.Context is populated from the surface's input component values
-// (TextField → string, ChoicePicker → []string, CheckBox → bool, keyed by
-// component ID) merged with the action's own declared context bindings.
+// Status. ButtonClicked, InputSubmitted, and ChoiceSelected are all emitted
+// by the surface renderer. ButtonClicked carries the button's resolved
+// *a2ui.EventAction (nil for buttons with no server event); alongside it the
+// renderer emits a native a2ui.ClientMessage whose ActionEvent.Context is
+// populated from the surface's input component values (TextField/DateTimeInput
+// → string, ChoicePicker → []string, CheckBox → bool, Slider → float64, keyed
+// by component ID) merged with the action's own declared context bindings.
+// InputSubmitted carries the confirmed text of a TextField (or DateTimeInput,
+// which shares the TextField edit path); ChoiceSelected carries a
+// ChoicePicker's full selection as a string list, matching the component's
+// natively multi-value shape.
 //
 // FormSubmitted is deprecated: A2UI v0.9 has no Form component, so a "form
 // submit" is just a Button Action whose ActionEvent.Context carries the
-// gathered field values — the host reads Context directly. InputSubmitted and
-// ChoiceSelected are not emitted yet; they are a provisional host-facing
-// vocabulary that will be re-grounded in A2UI catalog terms (TextField, not
-// "input"; ChoicePicker, not "choice") when wired. Treat those shapes as not
-// yet stable.
+// gathered field values — the host reads Context directly.
 //
 // Source context. Every event embeds Source, which carries the IDs a consumer
 // needs to tell interactions apart when more than one component (or the same
@@ -57,32 +58,37 @@ type ButtonClicked struct {
 	Action *a2ui.EventAction
 }
 
-// InputSubmitted is emitted when the user confirms an A2UI TextField value.
-//
-// TODO(a2tea): dispatch this from the renderer with Source set.
+// InputSubmitted is emitted when the user confirms an A2UI TextField value:
+// with the surface focused, Enter on a focused TextField (or DateTimeInput,
+// which shares the TextField edit path) dispatches this event with Source
+// set. Value is the field's value at the moment of submission — the edited
+// text when the user has typed, else the field's literal or resolved
+// data-model value ("" when the value is absent or unresolved; display
+// placeholders never leak into events).
 type InputSubmitted struct {
 	Source
-	// ID is the a2ui.Component ID of the TextField.
+	// ID is the a2ui.Component ID of the TextField (or DateTimeInput).
 	ID string
 	// Value is the final string value the user submitted.
 	Value string
 }
 
-// ChoiceSelected is emitted when the user picks from an A2UI ChoicePicker.
+// ChoiceSelected is emitted when the selection set of an A2UI ChoicePicker
+// changes: with the surface focused, Space toggles the picker's highlighted
+// option and dispatches this event with Source set. A Space that leaves the
+// selection unchanged (radio semantics: re-selecting a single-select picker's
+// already selected option) emits nothing.
 //
-// A2UI's ChoicePicker is natively multi-value (its value is a string list), so
-// when this event is wired it will likely carry a []string rather than a single
-// Value — one of the re-grounding tasks noted in the package doc. It is kept
-// single-valued here only until then.
-//
-// TODO(a2tea): dispatch this from the renderer with Source set; reconcile the
-// value shape with ChoicePicker's list value.
+// A2UI's ChoicePicker is natively multi-value (its value is a string list),
+// so the event carries the full selection as Values; a single-select picker's
+// list simply never has more than one element.
 type ChoiceSelected struct {
 	Source
 	// ID is the a2ui.Component ID of the ChoicePicker.
 	ID string
-	// Value is the selected option's value (NOT its label).
-	Value string
+	// Values is the full selected option value list (option values, NOT
+	// labels), in option-declaration order.
+	Values []string
 }
 
 // Deprecated: A2UI v0.9 has no Form component. A "form submit" is a Button
