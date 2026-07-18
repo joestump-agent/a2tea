@@ -8,12 +8,12 @@ import a2ui "github.com/tmc/a2ui"
 // references them explicitly in Action.Event.Context.
 //
 // Value types match the component kind so the host and agent see a consistent
-// shape: TextField → string, ChoicePicker → []string, CheckBox → bool.
-// Slider and DateTimeInput are omitted — they are not yet editable and
-// their readout is speculative.
+// shape: TextField → string, DateTimeInput → string, ChoicePicker → []string,
+// CheckBox → bool, Slider → float64.
 //
-// For TextFields, an edited value (from fieldValues) shadows the component's
-// static literal. Only literal values are resolved for other component types;
+// For every component kind, an edited value (from the fieldValues /
+// checkValues / choiceValues / sliderValues edit state) shadows the
+// component's static literal. Only literal values are resolved otherwise;
 // binding and FunctionCall DynamicX values are skipped because the data model
 // is not applied yet; the host should resolve these from its own state.
 func (s *Surface) gatherFieldValues() map[string]any {
@@ -34,12 +34,46 @@ func (s *Surface) gatherFieldValues() map[string]any {
 					ctx[c.ID] = *v
 				}
 			}
+		case c.DateTimeInput != nil:
+			// DateTimeInput shares the TextField rune-edit path, so its
+			// edits live in fieldValues too.
+			if s.fieldValues != nil {
+				if v, ok := s.fieldValues[c.ID]; ok {
+					ctx[c.ID] = v
+					continue
+				}
+			}
+			if v := resolveDynamicString(c.DateTimeInput.Value); v != nil {
+				ctx[c.ID] = *v
+			}
 		case c.ChoicePicker != nil:
+			if s.choiceValues != nil {
+				if v, ok := s.choiceValues[c.ID]; ok {
+					ctx[c.ID] = v
+					continue
+				}
+			}
 			if v := resolveDynamicStringList(c.ChoicePicker.Value); v != nil {
 				ctx[c.ID] = v
 			}
 		case c.CheckBox != nil:
+			if s.checkValues != nil {
+				if v, ok := s.checkValues[c.ID]; ok {
+					ctx[c.ID] = v
+					continue
+				}
+			}
 			if v := resolveDynamicBool(c.CheckBox.Value); v != nil {
+				ctx[c.ID] = *v
+			}
+		case c.Slider != nil:
+			if s.sliderValues != nil {
+				if v, ok := s.sliderValues[c.ID]; ok {
+					ctx[c.ID] = v
+					continue
+				}
+			}
+			if v := c.Slider.Value.Literal; v != nil {
 				ctx[c.ID] = *v
 			}
 		}
@@ -52,9 +86,10 @@ func (s *Surface) gatherFieldValues() map[string]any {
 // a button click (or at any time), the host calls FieldValues to read what
 // the user typed.
 //
-// The returned map has the same structure as gatherFieldValues: TextField →
-// string (edited value or literal), ChoicePicker → []string, CheckBox → bool.
-// The returned map is a copy; mutating it does not affect the surface.
+// The returned map has the same structure as gatherFieldValues: TextField and
+// DateTimeInput → string, ChoicePicker → []string, CheckBox → bool, Slider →
+// float64 — the edited value when one exists, else the static literal. The
+// returned map is a copy; mutating it does not affect the surface.
 func (s *Surface) FieldValues() map[string]any {
 	return s.gatherFieldValues()
 }

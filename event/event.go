@@ -7,8 +7,9 @@
 // button's resolved *a2ui.EventAction (nil for buttons with no server event).
 // Alongside it the renderer emits a native a2ui.ClientMessage whose
 // ActionEvent.Context is populated from the surface's input component values
-// (TextField → string, ChoicePicker → []string, CheckBox → bool, keyed by
-// component ID) merged with the action's own declared context bindings.
+// (TextField/DateTimeInput → string, ChoicePicker → []string, CheckBox →
+// bool, Slider → float64, keyed by component ID) merged with the action's
+// own declared context bindings.
 //
 // FormSubmitted is deprecated: A2UI v0.9 has no Form component, so a "form
 // submit" is just a Button Action whose ActionEvent.Context carries the

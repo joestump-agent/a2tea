@@ -3,7 +3,7 @@
 // component tree with lipgloss.
 //
 // Rendering is real for the core catalog: Text (with variants), Card, Column,
-// Row, List, Divider, Button, and read-only visuals for the input components
+// Row, List, Divider, Button, and editable visuals for the input components
 // (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput). Media components
 // (Image, Icon, Video, AudioPlayer) draw compact placeholders, as does Tabs.
 // DynamicString data bindings render as placeholders until the data
@@ -16,11 +16,13 @@
 // a2ui.ClientMessage whose ActionEvent carries Name, SurfaceID, and
 // SourceComponentID. FunctionCall-only buttons emit no ClientMessage.
 //
-// TextFields are editable: they join Buttons in the focus ring, and when one
-// holds focus printable keys append to its value and backspace deletes. Typed
-// values are read back via FieldValues and flow into a button's ActionEvent
-// Context. Other input components (CheckBox, ChoicePicker, Slider,
-// DateTimeInput) remain read-only visuals for now.
+// Input components are editable and join Buttons in the focus ring. A focused
+// TextField (and DateTimeInput, which shares the same rune-edit path against
+// its string value) accepts printable keys and backspace. A focused CheckBox
+// toggles with Space or Enter. A focused ChoicePicker moves its highlight with
+// Up/Down and toggles the highlighted option with Space. A focused Slider
+// steps with Left/Right within its min/max bounds. Edited values are read back
+// via FieldValues and flow into a button's ActionEvent Context.
 //
 // Modals open and close: a Modal joins the focus ring as a single element
 // drawn as its trigger, Enter toggles it open, and Esc closes the most
@@ -136,17 +138,36 @@ type Surface struct {
 	// single-goroutine depth-first pass, so the push/pop is safe.
 	scope []any
 
-	// focusables are the IDs of interactive components (buttons and text
-	// fields) in depth-first tree order; focusIdx points at the one holding
-	// focus.
+	// focusables are the IDs of interactive components (buttons and input
+	// components) in depth-first tree order; focusIdx points at the one
+	// holding focus.
 	focusables []string
 	focusIdx   int
 
-	// fieldValues holds the edited text of TextField components, keyed by
-	// component ID. It is lazily initialized on first edit. An entry here
-	// shadows the component's static literal value for both rendering and
-	// value readout (gatherFieldValues / FieldValues).
+	// fieldValues holds the edited text of TextField and DateTimeInput
+	// components, keyed by component ID. It is lazily initialized on first
+	// edit. An entry here shadows the component's static literal value for
+	// both rendering and value readout (gatherFieldValues / FieldValues).
 	fieldValues map[string]string
+
+	// checkValues holds the toggled state of CheckBox components, keyed by
+	// component ID. Lazily initialized on first toggle; an entry shadows the
+	// component's static literal, mirroring fieldValues.
+	checkValues map[string]bool
+
+	// choiceValues holds the edited selection of ChoicePicker components,
+	// keyed by component ID. The value is the selected option values in
+	// option-declaration order. An entry shadows the static literal.
+	choiceValues map[string][]string
+
+	// sliderValues holds the adjusted value of Slider components, keyed by
+	// component ID. An entry shadows the static literal.
+	sliderValues map[string]float64
+
+	// choiceCursor holds each ChoicePicker's highlighted option index, keyed
+	// by component ID. It is presentation state, not a value: it never flows
+	// into FieldValues or ActionEvent.Context.
+	choiceCursor map[string]int
 
 	// openModals holds the component IDs of Modal components currently
 	// open, in the order they were opened (a stack — Esc closes the most
@@ -211,13 +232,16 @@ func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *
 func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
-// cycle through buttons, text fields, and modals. Enter activates the focused
-// button and toggles the focused modal open/closed; Esc closes the most
-// recently opened modal (and is otherwise ignored, so the host keeps its
-// Esc semantics when no modal is open — see HasOpenModal).
-// When a text field holds focus, rune key presses append to its value and
-// backspace deletes the last rune; Enter on a text field is a no-op (there is
-// no form-submit concept).
+// cycle through buttons, input components, and modals. Enter activates the
+// focused button and toggles the focused modal open/closed; Esc closes the
+// most recently opened modal (and is otherwise ignored, so the host keeps its
+// Esc semantics when no modal is open — see HasOpenModal). When a
+// text-editable component (TextField or DateTimeInput) holds focus, rune key
+// presses append to its value and backspace deletes the last rune; Enter
+// there is a no-op (there is no form-submit concept). A focused CheckBox
+// toggles on Space or Enter; a focused ChoicePicker moves its highlight with
+// Up/Down and toggles the highlighted option with Space; a focused Slider
+// steps with Left/Right.
 //
 // Button activation emits two messages via tea.Batch:
 //   - event.ButtonClicked — the host-facing convenience event, carrying
@@ -248,14 +272,47 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		s.focusIdx = (s.focusIdx - 1 + len(s.focusables)) % len(s.focusables)
 	case "enter":
-		// Enter toggles a focused modal open/closed and activates a focused
-		// button; on a text field it is a no-op.
+		// Enter toggles a focused modal open/closed, activates a focused
+		// button, and toggles a focused checkbox; on a text-editable
+		// component it is a no-op.
 		if s.focusedIsModal() {
 			s.toggleModal(s.focusables[s.focusIdx])
 			return s, nil
 		}
 		if s.focusedIsButton() {
 			return s, s.activate()
+		}
+		if s.focusedIsCheckBox() {
+			s.toggleCheckBox()
+		}
+	case "space":
+		// Space is a command on toggleable components and text input on
+		// text-editable ones. Key.String() reports "space" (never " "), so
+		// the text-input branch cannot be reached from the default case and
+		// must be handled here.
+		switch {
+		case s.focusedIsCheckBox():
+			s.toggleCheckBox()
+		case s.focusedIsChoicePicker():
+			s.togglePickerOption()
+		case s.focusedIsTextEditable():
+			s.appendText(" ")
+		}
+	case "up":
+		if s.focusedIsChoicePicker() {
+			s.movePickerCursor(-1)
+		}
+	case "down":
+		if s.focusedIsChoicePicker() {
+			s.movePickerCursor(1)
+		}
+	case "left":
+		if s.focusedIsSlider() {
+			s.stepSlider(-1)
+		}
+	case "right":
+		if s.focusedIsSlider() {
+			s.stepSlider(1)
 		}
 	case "esc":
 		// Esc closes the most recently opened modal, returning focus to it
@@ -265,16 +322,16 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.refreshFocusables(id)
 		}
 	case "backspace":
-		if s.focusedIsTextField() {
+		if s.focusedIsTextEditable() {
 			s.deleteRune()
 		}
 	default:
-		// Printable key presses edit the focused text field. key.Text is the
-		// actual characters produced by the key — it already accounts for
-		// Shift (so "A" and "!" arrive as text) and is empty for navigation
-		// and control keys (arrows, Home/End, F-keys), whose Code is a
-		// sentinel above unicode.MaxRune that must never be inserted.
-		if s.focusedIsTextField() && key.Text != "" {
+		// Printable key presses edit the focused text-editable component.
+		// key.Text is the actual characters produced by the key — it already
+		// accounts for Shift (so "A" and "!" arrive as text) and is empty for
+		// navigation and control keys (arrows, Home/End, F-keys), whose Code
+		// is a sentinel above unicode.MaxRune that must never be inserted.
+		if s.focusedIsTextEditable() && key.Text != "" {
 			s.appendText(key.Text)
 		}
 	}
@@ -361,9 +418,9 @@ func (s *Surface) isFocused(id string) bool {
 	return s.Focused() && len(s.focusables) > 0 && s.focusables[s.focusIdx] == id
 }
 
-// Focusables returns the IDs of interactive components (buttons, text
-// fields, and modals) in depth-first focus-ring order. The host can use this
-// to inspect the focus ring; it is mainly intended for testing.
+// Focusables returns the IDs of interactive components (buttons, input
+// components, and modals) in depth-first focus-ring order. The host can use
+// this to inspect the focus ring; it is mainly intended for testing.
 func (s *Surface) Focusables() []string {
 	return s.focusables
 }
@@ -383,11 +440,32 @@ func (s *Surface) focusedIsButton() bool {
 	return c.Button != nil
 }
 
-// focusedIsTextField reports whether the currently focused component is a
-// TextField.
-func (s *Surface) focusedIsTextField() bool {
+// focusedIsTextEditable reports whether the currently focused component takes
+// the rune-edit path: a TextField, or a DateTimeInput (whose string value is
+// edited the same way).
+func (s *Surface) focusedIsTextEditable() bool {
 	c := s.focusedComponent()
-	return c.TextField != nil
+	return c.TextField != nil || c.DateTimeInput != nil
+}
+
+// focusedIsCheckBox reports whether the currently focused component is a
+// CheckBox.
+func (s *Surface) focusedIsCheckBox() bool {
+	c := s.focusedComponent()
+	return c.CheckBox != nil
+}
+
+// focusedIsChoicePicker reports whether the currently focused component is a
+// ChoicePicker.
+func (s *Surface) focusedIsChoicePicker() bool {
+	c := s.focusedComponent()
+	return c.ChoicePicker != nil
+}
+
+// focusedIsSlider reports whether the currently focused component is a Slider.
+func (s *Surface) focusedIsSlider() bool {
+	c := s.focusedComponent()
+	return c.Slider != nil
 }
 
 // focusedIsModal reports whether the currently focused component is a Modal.
@@ -396,25 +474,34 @@ func (s *Surface) focusedIsModal() bool {
 	return c.Modal != nil
 }
 
-// EditingText reports whether the surface holds focus on an editable text
-// field, i.e. printable key presses are currently text input rather than
-// commands. Hosts (and a2tea.Standalone) use this to decide whether keys
-// like "q" should quit or be typed.
+// EditingText reports whether the surface holds focus on a text-editable
+// component (TextField or DateTimeInput), i.e. printable key presses are
+// currently text input rather than commands. Hosts (and a2tea.Standalone) use
+// this to decide whether keys like "q" should quit or be typed.
 func (s *Surface) EditingText() bool {
-	return s.Focused() && s.focusedIsTextField()
+	return s.Focused() && s.focusedIsTextEditable()
 }
 
-// editSeed returns the text an edit of the given TextField starts from: its
-// literal value, or its binding's resolved data-model value, or "" when the
-// value is absent or unresolved. A display placeholder like "{binding}" or
-// "{fn}" is rendering chrome, not field content — it must never leak into
-// edits, FieldValues, or the ActionEvent.Context round-tripped to the agent.
+// editSeed returns the text an edit of the given TextField or DateTimeInput
+// starts from: its literal value, or its binding's resolved data-model value,
+// or "" when the value is absent or unresolved. A display placeholder like
+// "{binding}" or "{fn}" is rendering chrome, not field content — it must never
+// leak into edits, FieldValues, or the ActionEvent.Context round-tripped to
+// the agent.
 func (s *Surface) editSeed(id string) string {
 	c, ok := s.byID[id]
-	if !ok || c.TextField == nil || c.TextField.Value == nil {
+	if !ok {
 		return ""
 	}
-	d := *c.TextField.Value
+	var d a2ui.DynamicString
+	switch {
+	case c.TextField != nil && c.TextField.Value != nil:
+		d = *c.TextField.Value
+	case c.DateTimeInput != nil:
+		d = c.DateTimeInput.Value
+	default:
+		return ""
+	}
 	switch {
 	case d.Literal != nil:
 		return *d.Literal
@@ -431,8 +518,8 @@ func (s *Surface) editSeed(id string) string {
 	return ""
 }
 
-// appendText appends printable text to the focused text field's edited value,
-// lazily initializing the fieldValues map on first edit. On the first edit,
+// appendText appends printable text to the focused text-editable component's
+// edited value, lazily initializing the fieldValues map on first edit. On the first edit,
 // the field's current content (literal or resolved binding, via editSeed) is
 // used as the starting point so typed characters extend the existing text.
 // The argument is key.Text — the characters the key produced — which may be
@@ -448,7 +535,8 @@ func (s *Surface) appendText(text string) {
 	s.fieldValues[id] += text
 }
 
-// deleteRune removes the last rune from the focused text field's edited value.
+// deleteRune removes the last rune from the focused text-editable component's
+// edited value.
 // On the first edit of a pristine field it seeds from the literal, so backspace
 // can shorten (and ultimately clear) a pre-filled default — not just text the
 // user typed this session. If the value drops back to exactly the original
@@ -495,11 +583,20 @@ func (s *Surface) compact() bool {
 	}
 }
 
+// isInteractive reports whether c joins the focus ring: Buttons, Modals, and
+// every editable input component (TextField, CheckBox, ChoicePicker, Slider,
+// DateTimeInput).
+func isInteractive(c a2ui.Component) bool {
+	return c.Button != nil || c.TextField != nil || c.CheckBox != nil ||
+		c.ChoicePicker != nil || c.Slider != nil || c.DateTimeInput != nil ||
+		c.Modal != nil
+}
+
 // collectFocusables walks the tree from the root and returns the IDs of
-// interactive components (buttons, text fields, and modals) in depth-first
-// order. A component referenced by more than one parent (legal adjacency-list
-// reuse) is collected once — it is one interactive element however many times
-// it is drawn.
+// interactive components (buttons, input components, and modals) in
+// depth-first order. A component referenced by more than one parent (legal
+// adjacency-list reuse) is collected once — it is one interactive element
+// however many times it is drawn.
 //
 // A Modal is its own focusable: the trigger child is the modal's chrome (like
 // a button's label), so the trigger subtree never joins the ring separately —
@@ -519,7 +616,7 @@ func (s *Surface) collectFocusables() []string {
 		if !ok {
 			return
 		}
-		if (c.Button != nil || c.TextField != nil || c.Modal != nil) && !collected[c.ID] {
+		if isInteractive(c) && !collected[c.ID] {
 			collected[c.ID] = true
 			out = append(out, c.ID)
 		}

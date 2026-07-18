@@ -1,11 +1,13 @@
 package render
 
 // The field renderers in this file draw each input component's current
-// value. TextField is editable — a focused field accepts typed edits, which
-// shadow its static literal (see renderTextField and the Update loop in
-// render.go). The rest (CheckBox, ChoicePicker, Slider, DateTimeInput) are
-// still read-only visuals: they never mutate field state or emit input
-// events.
+// value. Every input component is editable while focused: TextField and
+// DateTimeInput accept typed edits via the rune-edit path, CheckBox toggles,
+// ChoicePicker moves a highlight and toggles options, and Slider steps its
+// value (see the Update loop in render.go and the edit paths in inputs.go).
+// Edited state shadows each component's static literal for both rendering and
+// value readout. A focused component marks its value line with the "▎" cue —
+// the same monochrome chrome language as the TextField cursor.
 
 import (
 	"strconv"
@@ -72,21 +74,33 @@ func (s *Surface) renderTextField(c a2ui.Component) string {
 	return wrapTo(s.labeled(s.dynString(tf.Label), cue+value), s.width)
 }
 
-// renderCheckBox renders a CheckBox as "[x] label" when the value's literal
-// is true and "[ ] label" otherwise. A non-literal value (binding/function)
-// is treated as unchecked, with its placeholder appended after the label.
+// renderCheckBox renders a CheckBox as "[x] label" when its current value is
+// true and "[ ] label" otherwise. A toggled value (from checkValues) shadows
+// the static literal. An unedited non-literal value (binding/function) is
+// treated as unchecked, with its placeholder appended after the label; once
+// the user toggles, the edited value replaces the placeholder. A focused
+// CheckBox is prefixed with the "▎" cue.
 func (s *Surface) renderCheckBox(c a2ui.Component) string {
 	cb := c.CheckBox
+	edited := false
+	if s.checkValues != nil {
+		_, edited = s.checkValues[c.ID]
+	}
 	box := "[ ]"
-	if cb.Value.Literal != nil && *cb.Value.Literal {
+	if s.checkBoxValue(c) {
 		box = "[x]"
 	}
 	line := box + " " + s.dynString(cb.Label)
-	switch {
-	case cb.Value.Binding != nil:
-		line += " " + s.styles.Caption.Render("{binding}")
-	case cb.Value.FunctionCall != nil:
-		line += " " + s.styles.Caption.Render("{fn}")
+	if !edited {
+		switch {
+		case cb.Value.Binding != nil:
+			line += " " + s.styles.Caption.Render("{binding}")
+		case cb.Value.FunctionCall != nil:
+			line += " " + s.styles.Caption.Render("{fn}")
+		}
+	}
+	if s.isFocused(c.ID) {
+		line = "▎" + line
 	}
 	return wrapTo(line, s.width)
 }
@@ -94,23 +108,25 @@ func (s *Surface) renderCheckBox(c a2ui.Component) string {
 // renderChoicePicker renders a ChoicePicker: an optional caption label line,
 // then one line per option marked "(•)"/"( )" for single-select or
 // "[x]"/"[ ]" for the multipleSelection variant. An option is selected when
-// its value appears in the picker's Value list literal; a non-literal Value
-// (binding/function) renders every option unselected. Option display text is
-// the option's label, falling back to its value.
+// its value appears in the current selection — the edited selection (from
+// choiceValues) when present, else the Value list literal; an unedited
+// non-literal Value (binding/function) renders every option unselected.
+// Option display text is the option's label, falling back to its value. When
+// the picker holds focus every option line gains a "▏" gutter, with "▎" on
+// the highlighted option Up/Down moves and Space toggles.
 func (s *Surface) renderChoicePicker(c a2ui.Component) string {
 	cp := c.ChoicePicker
 	multi := cp.Variant == a2ui.ChoicePickerVariantMultipleSelection
-	selected := make(map[string]bool, len(cp.Value.Literal))
-	for _, v := range cp.Value.Literal {
-		selected[v] = true
-	}
+	selected := s.pickerSelection(c.ID, cp)
+	focused := s.isFocused(c.ID)
+	cursor := s.pickerCursor(c.ID, cp)
 	lines := make([]string, 0, len(cp.Options)+1)
 	if cp.Label != nil {
 		if label := s.dynString(*cp.Label); label != "" {
 			lines = append(lines, s.styles.Caption.Render(label))
 		}
 	}
-	for _, opt := range cp.Options {
+	for i, opt := range cp.Options {
 		mark := "( )"
 		switch {
 		case multi && selected[opt.Value]:
@@ -124,16 +140,26 @@ func (s *Surface) renderChoicePicker(c a2ui.Component) string {
 		if text == "" {
 			text = opt.Value
 		}
-		lines = append(lines, mark+" "+text)
+		line := mark + " " + text
+		if focused {
+			cue := "▏"
+			if i == cursor {
+				cue = "▎"
+			}
+			line = cue + line
+		}
+		lines = append(lines, line)
 	}
 	return wrapTo(strings.Join(lines, "\n"), s.width)
 }
 
 // renderSlider renders a Slider: an optional caption label line, then a
 // sliderCells-wide bar of filled "█" and empty "─" cells proportional to
-// (value-min)/(max-min), followed by the numeric value. A missing value
-// literal or a degenerate range (max <= min, which would divide by zero)
-// renders a faint placeholder bar instead.
+// (value-min)/(max-min), followed by the numeric value. A stepped value (from
+// sliderValues) shadows the static literal. A missing value literal or a
+// degenerate range (max <= min, which would divide by zero) renders a faint
+// placeholder bar instead. A focused Slider's bar is prefixed with the "▎"
+// cue.
 func (s *Surface) renderSlider(c a2ui.Component) string {
 	sl := c.Slider
 	lo := 0.0
@@ -141,9 +167,15 @@ func (s *Surface) renderSlider(c a2ui.Component) string {
 		lo = *sl.Min
 	}
 	span := sl.Max - lo
+	value := sl.Value.Literal
+	if s.sliderValues != nil {
+		if v, ok := s.sliderValues[c.ID]; ok {
+			value = &v
+		}
+	}
 	bar := s.styles.Caption.Render(strings.Repeat("─", sliderCells))
-	if sl.Value.Literal != nil && span > 0 {
-		ratio := (*sl.Value.Literal - lo) / span
+	if value != nil && span > 0 {
+		ratio := (*value - lo) / span
 		if ratio < 0 {
 			ratio = 0
 		}
@@ -154,8 +186,15 @@ func (s *Surface) renderSlider(c a2ui.Component) string {
 		bar = strings.Repeat("█", filled) + strings.Repeat("─", sliderCells-filled)
 	}
 	body := bar
-	if v := dynNumString(sl.Value); v != "" {
-		body += " " + v
+	readout := dynNumString(sl.Value)
+	if value != nil {
+		readout = strconv.FormatFloat(*value, 'f', -1, 64)
+	}
+	if readout != "" {
+		body += " " + readout
+	}
+	if s.isFocused(c.ID) {
+		body = "▎" + body
 	}
 	label := ""
 	if sl.Label != nil {
@@ -165,13 +204,29 @@ func (s *Surface) renderSlider(c a2ui.Component) string {
 }
 
 // renderDateTimeInput renders a DateTimeInput: an optional caption label
-// line, then the value string; an absent value renders a faint "(unset)".
+// line, then the value string; an absent (or cleared) value renders a faint
+// "(unset)". An edited value (from fieldValues — DateTimeInput shares the
+// TextField rune-edit path) shadows the static literal, including an edit to
+// the empty string, which must render as "(unset)" rather than fall back to
+// the literal. A focused DateTimeInput's value is prefixed with the "▎" cue.
 // EnableDate/EnableTime and the Min/Max bounds are not rendered.
 func (s *Surface) renderDateTimeInput(c a2ui.Component) string {
 	dt := c.DateTimeInput
-	value := s.dynString(dt.Value)
+	value := ""
+	edited := false
+	if s.fieldValues != nil {
+		if v, ok := s.fieldValues[c.ID]; ok {
+			value, edited = v, true
+		}
+	}
+	if !edited {
+		value = s.dynString(dt.Value)
+	}
 	if value == "" {
 		value = s.styles.Caption.Render("(unset)")
+	}
+	if s.isFocused(c.ID) {
+		value = "▎" + value
 	}
 	label := ""
 	if dt.Label != nil {
