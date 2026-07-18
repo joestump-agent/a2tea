@@ -79,10 +79,13 @@ component tree from the root (the component nothing else references as a child).
 - Events: `event.ButtonClicked` + native `ClientMessage`, `InputSubmitted`
   (Enter on a `TextField` / `DateTimeInput`), and `ChoiceSelected` (a
   `ChoicePicker` selection change, carrying `Values []string`)
+- `Tabs`: the tab bar joins the focus ring; `←`/`→` (or `h`/`l`) switch the
+  active tab, and components inside inactive tabs leave the focus ring
 
 ### ✗ Not yet
 
-Each gap is tracked in the issue backlog:
-
-- Tab switching (first tab is active) —
-  [#45](https://github.com/joestump-agent/a2tea/issues/45)
+The original catalog gaps are closed. What remains is deliberate scope, not
+backlog: media components (`Image`, `Icon`, `Video`, `AudioPlayer`) draw
+compact one-line placeholders — a terminal renderer has nothing honest to
+play them with. Future work is tracked in the
+[issue backlog](https://github.com/joestump-agent/a2tea/issues).
