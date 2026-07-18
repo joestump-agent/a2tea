@@ -40,11 +40,17 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `CheckBox`, `ChoicePicker`, `Slider`, and `DateTimeInput` are read-only
   visuals that draw their current values.
 - Compact placeholders for media (`Image`, `Icon`, `Video`, `AudioPlayer`);
-  `Tabs` render their title bar plus the first tab's content; `Modal` renders
-  only its trigger.
+  `Tabs` render their title bar plus the first tab's content.
+- `Modal` opens and closes: the modal joins the focus ring as a single element
+  drawn as its trigger, `Enter` toggles it open, and `Esc` closes the most
+  recently opened modal. Open content renders as a bordered in-flow block (the
+  honest terminal equivalent of an overlay) whose focusables join the ring only
+  while open; open state survives `updateComponents` merges. Hosts use
+  `Surface.HasOpenModal` to keep `Esc` routed to the surface while a modal is
+  up (`a2tea.Standalone` does this before its esc-quit).
 - The first wired event: when the host focuses a surface, `Tab` / `Shift+Tab`
-  cycle its focusables (buttons and text fields) and `Enter` activates the
-  focused button. Activation emits
+  cycle its focusables (buttons, text fields, and modals) and `Enter` activates
+  the focused button. Activation emits
   `event.ButtonClicked` (carrying the resolved `*a2ui.EventAction`) and, when
   the button has a server-side `Action.Event`, a protocol-native
   `a2ui.ClientMessage` whose `ActionEvent` carries `Name`, `SurfaceID`,
@@ -79,7 +85,6 @@ Also implemented since earlier revisions of this doc:
 
 **Not yet** (tracked as follow-ups)
 - Tab switching: tabs are not focusable, so the first tab is always active.
-- Modal content: a modal renders only its trigger; its content stays hidden.
 - Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
   `DateTimeInput` remain read-only visuals.
 - The remaining host-facing event types: `InputSubmitted`/`ChoiceSelected`

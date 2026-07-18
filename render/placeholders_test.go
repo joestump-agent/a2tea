@@ -51,31 +51,6 @@ func TestTabsEmptyPlaceholder(t *testing.T) {
 	}
 }
 
-// TestModalRendersTriggerAndHidesContent verifies the Modal placeholder: the
-// trigger child renders, the content stays hidden, and the faint explanatory
-// note follows the trigger.
-func TestModalRendersTriggerAndHidesContent(t *testing.T) {
-	comps := []a2ui.Component{
-		{ID: "root", Modal: &a2ui.ModalComponent{Trigger: "trig", Content: "body"}},
-		text("trig", "Open settings"),
-		text("body", "secret dialog body"),
-	}
-	out := renderPlain(comps)
-
-	if !strings.Contains(out, "Open settings") {
-		t.Fatalf("modal should render its trigger: %q", out)
-	}
-	if strings.Contains(out, "secret dialog body") {
-		t.Fatalf("closed modal should NOT render its content: %q", out)
-	}
-	if !strings.Contains(out, "[a2tea: modal content hidden until interaction support lands]") {
-		t.Fatalf("modal should render the hidden-content note: %q", out)
-	}
-	if strings.Index(out, "Open settings") > strings.Index(out, "modal content hidden") {
-		t.Fatalf("trigger should precede the note: %q", out)
-	}
-}
-
 // TestImagePlaceholder verifies the Image placeholder: the glyph plus the
 // Description when present, otherwise the URL.
 func TestImagePlaceholder(t *testing.T) {

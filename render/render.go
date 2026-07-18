@@ -5,8 +5,8 @@
 // Rendering is real for the core catalog: Text (with variants), Card, Column,
 // Row, List, Divider, Button, and read-only visuals for the input components
 // (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput). Media components
-// (Image, Icon, Video, AudioPlayer) draw compact placeholders, as do Tabs and
-// Modal. DynamicString data bindings render as placeholders until the data
+// (Image, Icon, Video, AudioPlayer) draw compact placeholders, as does Tabs.
+// DynamicString data bindings render as placeholders until the data
 // model lands.
 //
 // Interaction: Buttons are focusable. When the host grants the surface focus,
@@ -21,6 +21,13 @@
 // values are read back via FieldValues and flow into a button's ActionEvent
 // Context. Other input components (CheckBox, ChoicePicker, Slider,
 // DateTimeInput) remain read-only visuals for now.
+//
+// Modals open and close: a Modal joins the focus ring as a single element
+// drawn as its trigger, Enter toggles it open, and Esc closes the most
+// recently opened modal. Open content renders as a bordered in-flow block —
+// the honest terminal equivalent of an overlay — and its focusables join the
+// ring only while it is open. Hosts use HasOpenModal to keep Esc routed to
+// the surface while a modal is up (mirroring the EditingText probe).
 //
 // Composition contract. A renderer is designed to be embedded as a child of a
 // larger TUI (crush), not to be the root of its own program:
@@ -141,6 +148,12 @@ type Surface struct {
 	// value readout (gatherFieldValues / FieldValues).
 	fieldValues map[string]string
 
+	// openModals holds the component IDs of Modal components currently
+	// open, in the order they were opened (a stack — Esc closes the most
+	// recently opened first). Like fieldValues it is user-interaction state:
+	// it survives Apply merges and is cleared by deleteSurface.
+	openModals []string
+
 	// compactOverride controls whether compact rendering is forced on,
 	// forced off, or decided automatically from the surface width.
 	compactOverride compactOverride
@@ -198,7 +211,10 @@ func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *
 func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
-// cycle through buttons and text fields. Enter activates the focused button.
+// cycle through buttons, text fields, and modals. Enter activates the focused
+// button and toggles the focused modal open/closed; Esc closes the most
+// recently opened modal (and is otherwise ignored, so the host keeps its
+// Esc semantics when no modal is open — see HasOpenModal).
 // When a text field holds focus, rune key presses append to its value and
 // backspace deletes the last rune; Enter on a text field is a no-op (there is
 // no form-submit concept).
@@ -232,9 +248,21 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		s.focusIdx = (s.focusIdx - 1 + len(s.focusables)) % len(s.focusables)
 	case "enter":
-		// Enter only activates buttons; on a text field it is a no-op.
+		// Enter toggles a focused modal open/closed and activates a focused
+		// button; on a text field it is a no-op.
+		if s.focusedIsModal() {
+			s.toggleModal(s.focusables[s.focusIdx])
+			return s, nil
+		}
 		if s.focusedIsButton() {
 			return s, s.activate()
+		}
+	case "esc":
+		// Esc closes the most recently opened modal, returning focus to it
+		// (its trigger). With no modal open the key falls through untouched —
+		// in Standalone that means Esc quits, gated by the HasOpenModal probe.
+		if id, ok := s.closeTopModal(); ok {
+			s.refreshFocusables(id)
 		}
 	case "backspace":
 		if s.focusedIsTextField() {
@@ -333,9 +361,9 @@ func (s *Surface) isFocused(id string) bool {
 	return s.Focused() && len(s.focusables) > 0 && s.focusables[s.focusIdx] == id
 }
 
-// Focusables returns the IDs of interactive components (buttons and text
-// fields) in depth-first focus-ring order. The host can use this to inspect
-// the focus ring; it is mainly intended for testing.
+// Focusables returns the IDs of interactive components (buttons, text
+// fields, and modals) in depth-first focus-ring order. The host can use this
+// to inspect the focus ring; it is mainly intended for testing.
 func (s *Surface) Focusables() []string {
 	return s.focusables
 }
@@ -360,6 +388,12 @@ func (s *Surface) focusedIsButton() bool {
 func (s *Surface) focusedIsTextField() bool {
 	c := s.focusedComponent()
 	return c.TextField != nil
+}
+
+// focusedIsModal reports whether the currently focused component is a Modal.
+func (s *Surface) focusedIsModal() bool {
+	c := s.focusedComponent()
+	return c.Modal != nil
 }
 
 // EditingText reports whether the surface holds focus on an editable text
@@ -462,10 +496,15 @@ func (s *Surface) compact() bool {
 }
 
 // collectFocusables walks the tree from the root and returns the IDs of
-// interactive components (buttons and text fields) in depth-first order. A
-// component referenced by more than one parent (legal adjacency-list reuse) is
-// collected once — it is one interactive element however many times it is
-// drawn.
+// interactive components (buttons, text fields, and modals) in depth-first
+// order. A component referenced by more than one parent (legal adjacency-list
+// reuse) is collected once — it is one interactive element however many times
+// it is drawn.
+//
+// A Modal is its own focusable: the trigger child is the modal's chrome (like
+// a button's label), so the trigger subtree never joins the ring separately —
+// Enter on the modal is what "activates the trigger". Content focusables are
+// reachable only while the modal is open, matching what is on screen.
 func (s *Surface) collectFocusables() []string {
 	var out []string
 	collected := map[string]bool{}
@@ -480,9 +519,15 @@ func (s *Surface) collectFocusables() []string {
 		if !ok {
 			return
 		}
-		if (c.Button != nil || c.TextField != nil) && !collected[c.ID] {
+		if (c.Button != nil || c.TextField != nil || c.Modal != nil) && !collected[c.ID] {
 			collected[c.ID] = true
 			out = append(out, c.ID)
+		}
+		if c.Modal != nil {
+			if s.modalOpen(c.ID) {
+				walk(c.Modal.Content, seen)
+			}
+			return
 		}
 		for _, child := range childIDs(c) {
 			walk(child, seen)
