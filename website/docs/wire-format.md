@@ -24,22 +24,29 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
 
 ```json
 <a2ui-json>
-{ "updateComponents": {
+{
+  "version": "v0.9",
+  "updateComponents": {
     "surfaceId": "trip",
     "components": [
-      { "id": "root", "componentType": "Card",
+      { "component": "Card", "id": "root", "child": "col" },
+      { "component": "Column", "id": "col",
         "children": ["title", "book"] },
-      { "id": "title", "componentType": "Text",
+      { "component": "Text", "id": "title",
         "text": "Kyoto · Autumn Weekend" },
-      { "id": "book", "componentType": "Button",
-        "label": "Book it" }
+      { "component": "Button", "id": "book", "child": "book-label" },
+      { "component": "Text", "id": "book-label", "text": "Book it" }
     ]
-} }
+  }
+}
 </a2ui-json>
 ```
 
-Illustrative shape — components live in a flat set that references children by ID
-(an adjacency list); the renderer resolves the tree from its root.
+Components live in a flat set that references children by ID (an adjacency
+list); the renderer resolves the tree from its root. Note the shape rules the
+catalog enforces: the type discriminator is `component`, a `Card` wraps exactly
+one `child`, and a `Button` has **no label field** — its label is a child
+`Text` component.
 
 ## Parsing & rendering
 

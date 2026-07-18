@@ -46,17 +46,21 @@ if _, err := p.Run(); err != nil {
 
 ```json
 <a2ui-json>
-{ "updateComponents": {
+{
+  "version": "v0.9",
+  "updateComponents": {
     "surfaceId": "hello",
     "components": [
-      { "id": "root", "componentType": "Card",
-        "children": ["t", "ok"] },
-      { "id": "t", "componentType": "Text",
-        "text": "Hello from A2UI" },
-      { "id": "ok", "componentType": "Button",
-        "label": "OK" }
+      { "component": "Card", "id": "root", "child": "col" },
+      { "component": "Column", "id": "col",
+        "children": ["t", "d", "ok"] },
+      { "component": "Text", "id": "t", "text": "Hello from A2UI" },
+      { "component": "Divider", "id": "d" },
+      { "component": "Button", "id": "ok", "child": "ok-label" },
+      { "component": "Text", "id": "ok-label", "text": "OK" }
     ]
-} }
+  }
+}
 </a2ui-json>
 ```
 

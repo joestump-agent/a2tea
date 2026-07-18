@@ -80,4 +80,15 @@ Outbound `tea.Msg` types a host consumes for interaction results — each carryi
 | `ButtonClicked` | ✓ emitted | A focused button is activated |
 | `InputSubmitted` | · defined | Not dispatched yet |
 | `ChoiceSelected` | · defined | Not dispatched yet |
-| `FormSubmitted` | · defined | Not dispatched yet |
+| `FormSubmitted` | ✗ deprecated | Never — see below |
+
+`ButtonClicked` carries the button's resolved `*a2ui.EventAction` (nil for
+buttons with no server-side event). Alongside it the renderer emits a native
+`a2ui.ClientMessage` whose `ActionEvent.Context` is populated from the
+surface's input component values (`TextField` → string, `ChoicePicker` →
+`[]string`, `CheckBox` → bool, keyed by component ID) — that message is the
+round-trip contract a host consumes.
+
+`FormSubmitted` is **deprecated** and never emitted: A2UI v0.9 has no Form
+component, so a "form submit" is just a Button action whose
+`ActionEvent.Context` carries the gathered field values.

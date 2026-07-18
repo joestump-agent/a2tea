@@ -20,7 +20,7 @@ type Model interface {
     tea.Model
     SetSize(width, height int)
     Focus() tea.Cmd
-    Blur() tea.Cmd
+    Blur()
     Focused() bool
 }
 ```
