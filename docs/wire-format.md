@@ -62,13 +62,18 @@ Also implemented since earlier revisions of this doc:
   surface.
 - `ActionEvent.Context` is populated from the surface's input component
   values, so typed `TextField` edits round-trip to the agent.
+- `createSurface` is an explicit, documented no-op (a2tea issue #47): a
+  surface is established by its first `updateComponents`, so the message
+  carries nothing a2tea needs. Its `theme` hints (`primaryColor`, `iconUrl`,
+  `agentDisplayName`) are ignored in favor of host theming via `WithStyles` —
+  chrome is deliberately monochrome so the host theme wins — and its
+  `catalogId` is ignored because a2tea's component catalog is the compiled-in
+  one, by design. `Apply` handles the message with an explicit no-op case
+  rather than silently falling through.
 
 **Not yet** (tracked as follow-ups)
 - `ChildList` templates: children resolve from explicit ID lists only; the
   dynamic template form is not expanded.
-- `createSurface` theming/catalog: the message is ignored — a surface is
-  established by its first `updateComponents`, and theme/catalog payloads are
-  not applied.
 - Tab switching: tabs are not focusable, so the first tab is always active.
 - Modal content: a modal renders only its trigger; its content stays hidden.
 - Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
