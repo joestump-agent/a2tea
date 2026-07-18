@@ -87,5 +87,3 @@ Also implemented since earlier revisions of this doc:
 - Tab switching: tabs are not focusable, so the first tab is always active.
 - Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
   `DateTimeInput` remain read-only visuals.
-- The remaining host-facing event types: `InputSubmitted`/`ChoiceSelected`
-  are defined but never dispatched.

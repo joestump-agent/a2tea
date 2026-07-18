@@ -18,9 +18,11 @@
 //
 // Input components are editable and join Buttons in the focus ring. A focused
 // TextField (and DateTimeInput, which shares the same rune-edit path against
-// its string value) accepts printable keys and backspace. A focused CheckBox
+// its string value) accepts printable keys and backspace, and Enter emits
+// event.InputSubmitted with the field's current value. A focused CheckBox
 // toggles with Space or Enter. A focused ChoicePicker moves its highlight with
-// Up/Down and toggles the highlighted option with Space. A focused Slider
+// Up/Down and toggles the highlighted option with Space, emitting
+// event.ChoiceSelected whenever the selection set changes. A focused Slider
 // steps with Left/Right within its min/max bounds. Edited values are read back
 // via FieldValues and flow into a button's ActionEvent Context.
 //
@@ -237,11 +239,12 @@ func (s *Surface) Init() tea.Cmd { return nil }
 // most recently opened modal (and is otherwise ignored, so the host keeps its
 // Esc semantics when no modal is open — see HasOpenModal). When a
 // text-editable component (TextField or DateTimeInput) holds focus, rune key
-// presses append to its value and backspace deletes the last rune; Enter
-// there is a no-op (there is no form-submit concept). A focused CheckBox
-// toggles on Space or Enter; a focused ChoicePicker moves its highlight with
-// Up/Down and toggles the highlighted option with Space; a focused Slider
-// steps with Left/Right.
+// presses append to its value, backspace deletes the last rune, and Enter
+// emits event.InputSubmitted carrying the field's current value. A focused
+// CheckBox toggles on Space or Enter; a focused ChoicePicker moves its
+// highlight with Up/Down and toggles the highlighted option with Space,
+// emitting event.ChoiceSelected when the selection set changes; a focused
+// Slider steps with Left/Right.
 //
 // Button activation emits two messages via tea.Batch:
 //   - event.ButtonClicked — the host-facing convenience event, carrying
@@ -273,14 +276,17 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s.focusIdx = (s.focusIdx - 1 + len(s.focusables)) % len(s.focusables)
 	case "enter":
 		// Enter toggles a focused modal open/closed, activates a focused
-		// button, and toggles a focused checkbox; on a text-editable
-		// component it is a no-op.
+		// button, submits a focused text-editable component's value, and
+		// toggles a focused checkbox.
 		if s.focusedIsModal() {
 			s.toggleModal(s.focusables[s.focusIdx])
 			return s, nil
 		}
 		if s.focusedIsButton() {
 			return s, s.activate()
+		}
+		if s.focusedIsTextEditable() {
+			return s, s.submitInput()
 		}
 		if s.focusedIsCheckBox() {
 			s.toggleCheckBox()
@@ -294,7 +300,7 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case s.focusedIsCheckBox():
 			s.toggleCheckBox()
 		case s.focusedIsChoicePicker():
-			s.togglePickerOption()
+			return s, s.togglePickerOption()
 		case s.focusedIsTextEditable():
 			s.appendText(" ")
 		}
@@ -402,6 +408,26 @@ func (s *Surface) activate() tea.Cmd {
 		func() tea.Msg { return clicked },
 		func() tea.Msg { return cm },
 	)
+}
+
+// submitInput dispatches event.InputSubmitted for the focused text-editable
+// component (TextField or DateTimeInput). Value follows the same shadowing
+// rule as rendering and FieldValues: the edited value when the user has
+// typed, else the field's literal or resolved data-model seed (editSeed) — so
+// an unedited field submits its pre-filled content and an unresolved binding
+// submits "" rather than leaking a display placeholder.
+func (s *Surface) submitInput() tea.Cmd {
+	id := s.focusables[s.focusIdx]
+	v, ok := s.fieldValues[id]
+	if !ok {
+		v = s.editSeed(id)
+	}
+	submitted := event.InputSubmitted{
+		Source: event.Source{ComponentID: id, SurfaceID: s.id},
+		ID:     id,
+		Value:  v,
+	}
+	return func() tea.Msg { return submitted }
 }
 
 // View implements tea.Model.

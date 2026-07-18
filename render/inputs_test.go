@@ -11,6 +11,7 @@ import (
 
 	a2ui "github.com/tmc/a2ui"
 
+	"github.com/joestump-agent/a2tea/event"
 	"github.com/joestump-agent/a2tea/render"
 )
 
@@ -490,6 +491,90 @@ func TestButtonContextCarriesEditedInputValues(t *testing.T) {
 	}
 	if v := ctx["dt"]; v != "2026-07-18" {
 		t.Fatalf("Context['dt'] = %v, want %q", v, "2026-07-18")
+	}
+}
+
+// TestEnterOnDateTimeInputEmitsInputSubmitted verifies Enter on a focused
+// DateTimeInput — which shares the TextField edit path — emits
+// event.InputSubmitted with Source set and the edited value.
+func TestEnterOnDateTimeInputEmitsInputSubmitted(t *testing.T) {
+	s := inputSurface(t, dateTimeComp("dt", "2026-07-1"))
+
+	s.Update(typeKey('8'))
+	_, cmd := s.Update(pressKey(tea.KeyEnter))
+
+	sub := findMsg[event.InputSubmitted](t, collectMsgs(t, cmd))
+	if sub.ComponentID != "dt" || sub.SurfaceID != "s" {
+		t.Fatalf("InputSubmitted.Source = %#v, want ComponentID 'dt', SurfaceID 's'", sub.Source)
+	}
+	if sub.ID != "dt" || sub.Value != "2026-07-18" {
+		t.Fatalf("InputSubmitted = %#v, want ID 'dt', Value '2026-07-18'", sub)
+	}
+}
+
+// TestChoicePickerSpaceEmitsChoiceSelected verifies Space on a single-select
+// picker emits event.ChoiceSelected with Source set and the new selection —
+// and that re-selecting the already selected option (radio semantics: no
+// change) emits nothing.
+func TestChoicePickerSpaceEmitsChoiceSelected(t *testing.T) {
+	s := inputSurface(t, pickerComp("cp", "", []string{"a"}))
+
+	// Move the highlight to Beta and select it: selection changes a → b.
+	s.Update(pressKey(tea.KeyDown))
+	_, cmd := s.Update(pressSpace())
+
+	sel := findMsg[event.ChoiceSelected](t, collectMsgs(t, cmd))
+	if sel.ComponentID != "cp" || sel.SurfaceID != "s" {
+		t.Fatalf("ChoiceSelected.Source = %#v, want ComponentID 'cp', SurfaceID 's'", sel.Source)
+	}
+	if sel.ID != "cp" || !reflect.DeepEqual(sel.Values, []string{"b"}) {
+		t.Fatalf("ChoiceSelected = %#v, want ID 'cp', Values [b]", sel)
+	}
+
+	// Space again on the selected option keeps it selected — no change, no
+	// event.
+	_, cmd = s.Update(pressSpace())
+	if cmd != nil {
+		t.Fatalf("re-selecting the selected option should emit nothing, got %#v", cmd())
+	}
+}
+
+// TestChoicePickerMultiSelectEmitsFullSelection verifies each toggle on a
+// multipleSelection picker emits the full post-toggle selection in
+// option-declaration order, including the empty selection when the last
+// option is untoggled.
+func TestChoicePickerMultiSelectEmitsFullSelection(t *testing.T) {
+	s := inputSurface(t, pickerComp("cp", a2ui.ChoicePickerVariantMultipleSelection, nil))
+
+	// Select Gamma, then Alpha: the second event carries [a c], option order.
+	s.Update(pressKey(tea.KeyDown))
+	s.Update(pressKey(tea.KeyDown))
+	_, cmd := s.Update(pressSpace())
+	sel := findMsg[event.ChoiceSelected](t, collectMsgs(t, cmd))
+	if !reflect.DeepEqual(sel.Values, []string{"c"}) {
+		t.Fatalf("first toggle Values = %v, want [c]", sel.Values)
+	}
+
+	s.Update(pressKey(tea.KeyUp))
+	s.Update(pressKey(tea.KeyUp))
+	_, cmd = s.Update(pressSpace())
+	sel = findMsg[event.ChoiceSelected](t, collectMsgs(t, cmd))
+	if !reflect.DeepEqual(sel.Values, []string{"a", "c"}) {
+		t.Fatalf("second toggle Values = %v, want [a c] in option order", sel.Values)
+	}
+
+	// Untoggle Alpha, then Gamma: the last event carries the empty selection.
+	_, cmd = s.Update(pressSpace())
+	sel = findMsg[event.ChoiceSelected](t, collectMsgs(t, cmd))
+	if !reflect.DeepEqual(sel.Values, []string{"c"}) {
+		t.Fatalf("untoggle Values = %v, want [c]", sel.Values)
+	}
+	s.Update(pressKey(tea.KeyDown))
+	s.Update(pressKey(tea.KeyDown))
+	_, cmd = s.Update(pressSpace())
+	sel = findMsg[event.ChoiceSelected](t, collectMsgs(t, cmd))
+	if len(sel.Values) != 0 {
+		t.Fatalf("clearing the selection should emit empty Values, got %v", sel.Values)
 	}
 }
 
