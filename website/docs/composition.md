@@ -37,3 +37,9 @@ When the focused child reports it is editing a `TextField`, `Standalone`
 forwards `q` as input instead of quitting — via the optional `EditingText()`
 probe.
 :::
+
+:::note Esc vs. modals.
+When the child reports an open `Modal` — via the optional `HasOpenModal()`
+probe — `Standalone` forwards `Esc` to the child (closing the modal) instead of
+quitting. `Ctrl+C` always quits.
+:::

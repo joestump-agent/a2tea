@@ -78,16 +78,23 @@ Outbound `tea.Msg` types a host consumes for interaction results — each carryi
 | Event | Status | Emitted on |
 | --- | --- | --- |
 | `ButtonClicked` | ✓ emitted | A focused button is activated |
-| `InputSubmitted` | · defined | Not dispatched yet |
-| `ChoiceSelected` | · defined | Not dispatched yet |
+| `InputSubmitted` | ✓ emitted | Enter confirms a focused `TextField` / `DateTimeInput` value |
+| `ChoiceSelected` | ✓ emitted | A focused `ChoicePicker`'s selection changes |
 | `FormSubmitted` | ✗ deprecated | Never — see below |
 
 `ButtonClicked` carries the button's resolved `*a2ui.EventAction` (nil for
 buttons with no server-side event). Alongside it the renderer emits a native
 `a2ui.ClientMessage` whose `ActionEvent.Context` is populated from the
-surface's input component values (`TextField` → string, `ChoicePicker` →
-`[]string`, `CheckBox` → bool, keyed by component ID) — that message is the
-round-trip contract a host consumes.
+surface's input component values (`TextField` / `DateTimeInput` → string,
+`ChoicePicker` → `[]string`, `CheckBox` → bool, `Slider` → float64, keyed by
+component ID) — that message is the round-trip contract a host consumes.
+
+`InputSubmitted` carries the field's current value — the edited text when the
+user has typed, else the literal / resolved-binding seed (an unresolved
+`{binding}` placeholder submits `""`). `ChoiceSelected` carries the full
+post-change selection as `Values []string` in option-declaration order, and is
+emitted only when the selection actually changes — re-selecting an
+already-selected single-select option emits nothing.
 
 `FormSubmitted` is **deprecated** and never emitted: A2UI v0.9 has no Form
 component, so a "form submit" is just a Button action whose

@@ -35,10 +35,12 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `Text` with its variant styles (h1–h3 heading, h4–h5 subheading, caption),
   `Card` in a rounded border, `Column`/`Row`/`List` layout, `Divider`, and
   styled focusable `Button`s.
-- Input components: `TextField` is editable — a focused field accepts typed
-  edits that update its state and flow into `ActionEvent.Context` — while
-  `CheckBox`, `ChoicePicker`, `Slider`, and `DateTimeInput` are read-only
-  visuals that draw their current values.
+- Input components: all five are focusable and editable. `TextField` and
+  `DateTimeInput` accept typed edits, `CheckBox` toggles on Space/Enter,
+  `ChoicePicker` moves a highlight with Up/Down and toggles options with Space
+  (radio semantics for single-select), and `Slider` steps with Left/Right
+  within `[min, max]`. Edited values shadow the static literals and flow into
+  `ActionEvent.Context`.
 - Compact placeholders for media (`Image`, `Icon`, `Video`, `AudioPlayer`);
   `Tabs` render their title bar plus the first tab's content.
 - `Modal` opens and closes: the modal joins the focus ring as a single element
@@ -48,8 +50,8 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   while open; open state survives `updateComponents` merges. Hosts use
   `Surface.HasOpenModal` to keep `Esc` routed to the surface while a modal is
   up (`a2tea.Standalone` does this before its esc-quit).
-- The first wired event: when the host focuses a surface, `Tab` / `Shift+Tab`
-  cycle its focusables (buttons, text fields, and modals) and `Enter` activates
+- Wired events: when the host focuses a surface, `Tab` / `Shift+Tab` cycle its
+  focusables (buttons, all input components, and modals) and `Enter` activates
   the focused button. Activation emits
   `event.ButtonClicked` (carrying the resolved `*a2ui.EventAction`) and, when
   the button has a server-side `Action.Event`, a protocol-native
@@ -57,6 +59,11 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `SourceComponentID`, and `Context`. `FunctionCall`-only buttons emit no
   `ClientMessage`.
   The `ActionEvent.Timestamp` is left empty for the host to stamp.
+  `Enter` on a focused `TextField` / `DateTimeInput` emits
+  `event.InputSubmitted` with the field's current value, and a `ChoicePicker`
+  selection change emits `event.ChoiceSelected` with the full post-change
+  selection as `Values []string` in option-declaration order (no emit when the
+  selection is unchanged). All three events carry `Source`.
 - Deliberately monochrome chrome (borders, bold, faint, reverse-video focus)
   so the host theme wins.
 
@@ -84,6 +91,5 @@ Also implemented since earlier revisions of this doc:
   rather than silently falling through.
 
 **Not yet** (tracked as follow-ups)
-- Tab switching: tabs are not focusable, so the first tab is always active.
-- Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
-  `DateTimeInput` remain read-only visuals.
+- Tab switching: tabs are not focusable, so the first tab is always active
+  (a2tea issue #45).

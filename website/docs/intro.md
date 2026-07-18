@@ -12,8 +12,9 @@ a2tea is the bridge that lets an AI agent drive a terminal UI with A2UI. It
 recognizes A2UI in a model's reply and draws it — instead of dumping raw JSON.
 
 :::note Early, but real.
-Rendering works for the core catalog; some inputs are read-only visuals and a
-few lifecycle features are still landing. See the roadmap in the
+Rendering works for the core catalog: all five input components are editable,
+modals open and close, and `ChildList` templates expand from the data model.
+The main remaining gap is interactive tab switching. See the roadmap in the
 [README](https://github.com/joestump-agent/a2tea#roadmap).
 :::
 
