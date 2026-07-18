@@ -68,11 +68,16 @@ Also implemented since earlier revisions of this doc:
   empty path or `/` is the element itself) before falling back to the
   surface data model. An `updateDataModel` on the list grows or shrinks the
   children on the next render.
+- `createSurface` is an explicit, documented no-op (a2tea issue #47): a
+  surface is established by its first `updateComponents`, so the message
+  carries nothing a2tea needs. Its `theme` hints (`primaryColor`, `iconUrl`,
+  `agentDisplayName`) are ignored in favor of host theming via `WithStyles` —
+  chrome is deliberately monochrome so the host theme wins — and its
+  `catalogId` is ignored because a2tea's component catalog is the compiled-in
+  one, by design. `Apply` handles the message with an explicit no-op case
+  rather than silently falling through.
 
 **Not yet** (tracked as follow-ups)
-- `createSurface` theming/catalog: the message is ignored — a surface is
-  established by its first `updateComponents`, and theme/catalog payloads are
-  not applied.
 - Tab switching: tabs are not focusable, so the first tab is always active.
 - Modal content: a modal renders only its trigger; its content stays hidden.
 - Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
