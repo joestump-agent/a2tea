@@ -121,6 +121,14 @@ type Surface struct {
 	// bound DynamicString/Value components at render time.
 	data map[string]any
 
+	// scope is the stack of data-model elements for the ChildList template
+	// instances currently being rendered: renderTemplateChildren pushes each
+	// list element before rendering the template component and pops it after,
+	// so bindings inside the instance resolve against that element first (see
+	// lookupBinding). Empty outside template expansion. Rendering is a
+	// single-goroutine depth-first pass, so the push/pop is safe.
+	scope []any
+
 	// focusables are the IDs of interactive components (buttons and text
 	// fields) in depth-first tree order; focusIdx points at the one holding
 	// focus.
@@ -558,12 +566,12 @@ func (s *Surface) withWidth(w int, f func() string) string {
 	return f()
 }
 
-// renderChildren renders each child ID in a ChildList in order. The
-// dynamic-template form of ChildList is not yet supported (no data model);
-// it renders a single placeholder.
+// renderChildren renders a ChildList: each explicit child ID in order for the
+// static form, or one template-component instance per data-model list element
+// for the dynamic form (see renderTemplateChildren).
 func (s *Surface) renderChildren(cl a2ui.ChildList, seen map[string]bool) []string {
 	if cl.Template != nil {
-		return []string{s.styles.Caption.Render("[a2tea: dynamic children not yet supported]")}
+		return s.renderTemplateChildren(cl.Template, seen)
 	}
 	parts := make([]string, 0, len(cl.IDs))
 	for _, id := range cl.IDs {
@@ -580,14 +588,11 @@ func (s *Surface) dynString(d a2ui.DynamicString) string {
 	case d.Literal != nil:
 		return *d.Literal
 	case d.Binding != nil:
-		if s.data != nil {
-			key := strings.TrimPrefix(d.Binding.Path, "/")
-			if v, ok := s.data[key]; ok {
-				if str, ok := v.(string); ok {
-					return str
-				}
-				return fmt.Sprintf("%v", v)
+		if v, ok := s.lookupBinding(d.Binding.Path); ok {
+			if str, ok := v.(string); ok {
+				return str
 			}
+			return fmt.Sprintf("%v", v)
 		}
 		return "{binding}"
 	case d.FunctionCall != nil:
@@ -626,11 +631,11 @@ func childIDs(c a2ui.Component) []string {
 	case c.Button != nil:
 		return []string{c.Button.Child}
 	case c.Column != nil:
-		return c.Column.Children.IDs
+		return childListIDs(c.Column.Children)
 	case c.Row != nil:
-		return c.Row.Children.IDs
+		return childListIDs(c.Row.Children)
 	case c.List != nil:
-		return c.List.Children.IDs
+		return childListIDs(c.List.Children)
 	case c.Modal != nil:
 		return []string{c.Modal.Content, c.Modal.Trigger}
 	case c.Tabs != nil:

@@ -62,6 +62,12 @@ Also implemented since earlier revisions of this doc:
   surface.
 - `ActionEvent.Context` is populated from the surface's input component
   values, so typed `TextField` edits round-trip to the agent.
+- `ChildList` templates: the dynamic template form expands one instance of
+  the template component per element of the bound data-model list, with
+  bindings inside each instance resolving against that element first (an
+  empty path or `/` is the element itself) before falling back to the
+  surface data model. An `updateDataModel` on the list grows or shrinks the
+  children on the next render.
 - `createSurface` is an explicit, documented no-op (a2tea issue #47): a
   surface is established by its first `updateComponents`, so the message
   carries nothing a2tea needs. Its `theme` hints (`primaryColor`, `iconUrl`,
@@ -72,8 +78,6 @@ Also implemented since earlier revisions of this doc:
   rather than silently falling through.
 
 **Not yet** (tracked as follow-ups)
-- `ChildList` templates: children resolve from explicit ID lists only; the
-  dynamic template form is not expanded.
 - Tab switching: tabs are not focusable, so the first tab is always active.
 - Modal content: a modal renders only its trigger; its content stays hidden.
 - Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
