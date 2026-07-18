@@ -19,8 +19,8 @@ import (
 // one.
 //
 // deleteSurface clears all surface state (components, data model, edits,
-// focus) but processing continues: a later updateComponents in the same batch
-// legally re-creates the surface.
+// focus, active tabs) but processing continues: a later updateComponents in
+// the same batch legally re-creates the surface.
 //
 // Apply returns false when no renderable state remains after all messages
 // (the surface was deleted and not re-created); the caller should treat the
@@ -46,6 +46,7 @@ func (s *Surface) Apply(msgs []a2ui.ServerMessage) bool {
 				s.focusIdx = 0
 				s.data = nil
 				s.fieldValues = nil
+				s.activeTabs = nil
 			}
 		}
 	}
@@ -63,9 +64,12 @@ func (s *Surface) targetsThisSurface(surfaceID string) bool {
 // applyComponents merges the given components into the surface's component map
 // by ID: an update to component X replaces X, leaving siblings intact. It
 // re-derives the root and focus ring, preserving focus on the same component
-// if it survives the merge.
+// if it survives the merge. Active-tab state (s.activeTabs) is deliberately
+// left untouched — like focus, it is user state the server must not clobber —
+// and out-of-range indices left behind by a shrunken tab list are clamped at
+// read time by activeTab.
 func (s *Surface) applyComponents(components []a2ui.Component) {
-	// Remember which button held focus before the merge.
+	// Remember which component held focus before the merge.
 	var focusedID string
 	if len(s.focusables) > 0 && s.focusIdx < len(s.focusables) {
 		focusedID = s.focusables[s.focusIdx]

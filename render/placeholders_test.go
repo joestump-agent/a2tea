@@ -9,10 +9,10 @@ import (
 	"github.com/joestump-agent/a2tea/render"
 )
 
-// TestTabsRenderTitleBarAndFirstChild verifies the Tabs placeholder: all tab
-// titles joined with " │ " on one line, followed by only the FIRST tab's
-// child (tab switching is not wired, so the second tab's content must stay
-// hidden).
+// TestTabsRenderTitleBarAndFirstChild verifies the default Tabs rendering:
+// all tab titles joined with " │ " on one line, followed by only the ACTIVE
+// tab's child — the first tab until the user switches (see tabs_test.go for
+// switching) — so the second tab's content must stay hidden.
 func TestTabsRenderTitleBarAndFirstChild(t *testing.T) {
 	comps := []a2ui.Component{
 		{ID: "root", Tabs: &a2ui.TabsComponent{Tabs: []a2ui.TabDef{

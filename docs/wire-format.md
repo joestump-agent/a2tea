@@ -40,11 +40,11 @@ usually interleaved with conversational text and wrapped in `<a2ui-json>` tags.
   `CheckBox`, `ChoicePicker`, `Slider`, and `DateTimeInput` are read-only
   visuals that draw their current values.
 - Compact placeholders for media (`Image`, `Icon`, `Video`, `AudioPlayer`);
-  `Tabs` render their title bar plus the first tab's content; `Modal` renders
+  `Tabs` render their title bar plus the active tab's content; `Modal` renders
   only its trigger.
 - The first wired event: when the host focuses a surface, `Tab` / `Shift+Tab`
-  cycle its focusables (buttons and text fields) and `Enter` activates the
-  focused button. Activation emits
+  cycle its focusables (buttons, text fields, and tab bars) and `Enter`
+  activates the focused button. Activation emits
   `event.ButtonClicked` (carrying the resolved `*a2ui.EventAction`) and, when
   the button has a server-side `Action.Event`, a protocol-native
   `a2ui.ClientMessage` whose `ActionEvent` carries `Name`, `SurfaceID`,
@@ -62,6 +62,10 @@ Also implemented since earlier revisions of this doc:
   surface.
 - `ActionEvent.Context` is populated from the surface's input component
   values, so typed `TextField` edits round-trip to the agent.
+- Tab switching: the tab bar joins the focus ring; `left`/`right` (or
+  `h`/`l`) switch the active tab, active-tab state survives
+  `updateComponents` merges the same way focus does, and an index left
+  out-of-range by a shrunken tab list clamps back to the first tab.
 
 **Not yet** (tracked as follow-ups)
 - `ChildList` templates: children resolve from explicit ID lists only; the
@@ -69,7 +73,6 @@ Also implemented since earlier revisions of this doc:
 - `createSurface` theming/catalog: the message is ignored — a surface is
   established by its first `updateComponents`, and theme/catalog payloads are
   not applied.
-- Tab switching: tabs are not focusable, so the first tab is always active.
 - Modal content: a modal renders only its trigger; its content stays hidden.
 - Editing beyond `TextField`: `CheckBox`, `ChoicePicker`, `Slider`, and
   `DateTimeInput` remain read-only visuals.

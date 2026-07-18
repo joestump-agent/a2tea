@@ -4,10 +4,10 @@
 //
 // Rendering is real for the core catalog: Text (with variants), Card, Column,
 // Row, List, Divider, Button, and read-only visuals for the input components
-// (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput). Media components
-// (Image, Icon, Video, AudioPlayer) draw compact placeholders, as do Tabs and
-// Modal. DynamicString data bindings render as placeholders until the data
-// model lands.
+// (TextField, CheckBox, ChoicePicker, Slider, DateTimeInput). Tabs render a
+// title bar plus the active tab's content. Media components (Image, Icon,
+// Video, AudioPlayer) draw compact placeholders, as does Modal. DynamicString
+// data bindings render as placeholders until the data model lands.
 //
 // Interaction: Buttons are focusable. When the host grants the surface focus,
 // Tab / Shift+Tab cycle the buttons and Enter activates the focused button.
@@ -19,8 +19,10 @@
 // TextFields are editable: they join Buttons in the focus ring, and when one
 // holds focus printable keys append to its value and backspace deletes. Typed
 // values are read back via FieldValues and flow into a button's ActionEvent
-// Context. Other input components (CheckBox, ChoicePicker, Slider,
-// DateTimeInput) remain read-only visuals for now.
+// Context. Tab bars also join the focus ring: when one holds focus, Left /
+// Right (or h / l) switch the active tab, and the active tab survives
+// Apply merges the same way focus does. Other input components (CheckBox,
+// ChoicePicker, Slider, DateTimeInput) remain read-only visuals for now.
 //
 // Composition contract. A renderer is designed to be embedded as a child of a
 // larger TUI (crush), not to be the root of its own program:
@@ -121,11 +123,19 @@ type Surface struct {
 	// bound DynamicString/Value components at render time.
 	data map[string]any
 
-	// focusables are the IDs of interactive components (buttons and text
-	// fields) in depth-first tree order; focusIdx points at the one holding
-	// focus.
+	// focusables are the IDs of interactive components (buttons, text
+	// fields, and tab bars) in depth-first tree order; focusIdx points at
+	// the one holding focus.
 	focusables []string
 	focusIdx   int
+
+	// activeTabs holds the active tab index of each Tabs component, keyed by
+	// component ID. It is lazily initialized on first switch; a missing entry
+	// means the first tab. Entries survive applyComponents merges — like
+	// focus, the active tab is user state the server must not clobber — and
+	// are clamped at read time (activeTab) so a merge that shrinks a tab list
+	// below a previously selected index falls back to the first tab.
+	activeTabs map[string]int
 
 	// fieldValues holds the edited text of TextField components, keyed by
 	// component ID. It is lazily initialized on first edit. An entry here
@@ -190,10 +200,11 @@ func NewSurface(surfaceID string, components []a2ui.Component, opts ...Option) *
 func (s *Surface) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model. When the surface holds focus, Tab / Shift+Tab
-// cycle through buttons and text fields. Enter activates the focused button.
-// When a text field holds focus, rune key presses append to its value and
-// backspace deletes the last rune; Enter on a text field is a no-op (there is
-// no form-submit concept).
+// cycle through buttons, text fields, and tab bars. Enter activates the
+// focused button. When a text field holds focus, rune key presses append to
+// its value and backspace deletes the last rune; Enter on a text field is a
+// no-op (there is no form-submit concept). When a tab bar holds focus, Left /
+// Right (or h / l) switch its active tab.
 //
 // Button activation emits two messages via tea.Batch:
 //   - event.ButtonClicked — the host-facing convenience event, carrying
@@ -231,6 +242,21 @@ func (s *Surface) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "backspace":
 		if s.focusedIsTextField() {
 			s.deleteRune()
+		}
+	case "left", "h":
+		// On a focused tab bar these switch tabs; otherwise "h" falls
+		// through to text-field editing ("left" has empty key.Text, so the
+		// append guard makes it a no-op there).
+		if s.focusedIsTabs() {
+			s.switchTab(-1)
+		} else if s.focusedIsTextField() && key.Text != "" {
+			s.appendText(key.Text)
+		}
+	case "right", "l":
+		if s.focusedIsTabs() {
+			s.switchTab(1)
+		} else if s.focusedIsTextField() && key.Text != "" {
+			s.appendText(key.Text)
 		}
 	default:
 		// Printable key presses edit the focused text field. key.Text is the
@@ -325,9 +351,9 @@ func (s *Surface) isFocused(id string) bool {
 	return s.Focused() && len(s.focusables) > 0 && s.focusables[s.focusIdx] == id
 }
 
-// Focusables returns the IDs of interactive components (buttons and text
-// fields) in depth-first focus-ring order. The host can use this to inspect
-// the focus ring; it is mainly intended for testing.
+// Focusables returns the IDs of interactive components (buttons, text
+// fields, and tab bars) in depth-first focus-ring order. The host can use
+// this to inspect the focus ring; it is mainly intended for testing.
 func (s *Surface) Focusables() []string {
 	return s.focusables
 }
@@ -352,6 +378,65 @@ func (s *Surface) focusedIsButton() bool {
 func (s *Surface) focusedIsTextField() bool {
 	c := s.focusedComponent()
 	return c.TextField != nil
+}
+
+// focusedIsTabs reports whether the currently focused component is a Tabs
+// component (i.e. the focus ring is on a tab bar).
+func (s *Surface) focusedIsTabs() bool {
+	c := s.focusedComponent()
+	return c.Tabs != nil
+}
+
+// switchTab moves the focused tab bar's active tab by delta, wrapping around
+// at either end (left from the first tab lands on the last, mirroring the
+// focus ring's Tab/Shift+Tab cycling). Because the focus ring contains only
+// the active tab's descendants, switching re-collects the ring and restores
+// focus to the tab bar itself, which always survives its own switch.
+func (s *Surface) switchTab(delta int) {
+	id := s.focusables[s.focusIdx]
+	c, ok := s.byID[id]
+	if !ok || c.Tabs == nil {
+		return
+	}
+	n := len(c.Tabs.Tabs)
+	if n == 0 {
+		return
+	}
+	if s.activeTabs == nil {
+		s.activeTabs = make(map[string]int)
+	}
+	s.activeTabs[id] = ((s.activeTab(id, n)+delta)%n + n) % n
+
+	s.focusables = s.collectFocusables()
+	for i, fid := range s.focusables {
+		if fid == id {
+			s.focusIdx = i
+			break
+		}
+	}
+}
+
+// activeTab returns the active tab index for the Tabs component with the
+// given ID, clamped to [0, n). Out-of-range state — e.g. a component update
+// shrank the tab list below a previously selected index — falls back to the
+// first tab instead of indexing past the end.
+func (s *Surface) activeTab(id string, n int) int {
+	idx := s.activeTabs[id]
+	if idx < 0 || idx >= n {
+		return 0
+	}
+	return idx
+}
+
+// ActiveTab returns the active tab index of the Tabs component with the given
+// ID, clamped to the component's current tab count. It returns 0 when the ID
+// is unknown, not a Tabs component, or has no tabs.
+func (s *Surface) ActiveTab(id string) int {
+	c, ok := s.byID[id]
+	if !ok || c.Tabs == nil || len(c.Tabs.Tabs) == 0 {
+		return 0
+	}
+	return s.activeTab(id, len(c.Tabs.Tabs))
 }
 
 // EditingText reports whether the surface holds focus on an editable text
@@ -454,10 +539,15 @@ func (s *Surface) compact() bool {
 }
 
 // collectFocusables walks the tree from the root and returns the IDs of
-// interactive components (buttons and text fields) in depth-first order. A
-// component referenced by more than one parent (legal adjacency-list reuse) is
-// collected once — it is one interactive element however many times it is
-// drawn.
+// interactive components (buttons, text fields, and tab bars) in depth-first
+// order. A component referenced by more than one parent (legal adjacency-list
+// reuse) is collected once — it is one interactive element however many times
+// it is drawn.
+//
+// A Tabs component contributes its own ID (the tab bar is focusable, unless
+// it has no tabs to switch) and then only its ACTIVE tab's subtree: focus
+// must never land on a component hidden inside an inactive tab. switchTab
+// re-collects the ring after every switch to keep it in step.
 func (s *Surface) collectFocusables() []string {
 	var out []string
 	collected := map[string]bool{}
@@ -475,6 +565,16 @@ func (s *Surface) collectFocusables() []string {
 		if (c.Button != nil || c.TextField != nil) && !collected[c.ID] {
 			collected[c.ID] = true
 			out = append(out, c.ID)
+		}
+		if c.Tabs != nil {
+			if tabs := c.Tabs.Tabs; len(tabs) > 0 {
+				if !collected[c.ID] {
+					collected[c.ID] = true
+					out = append(out, c.ID)
+				}
+				walk(tabs[s.activeTab(c.ID, len(tabs))].Child, seen)
+			}
+			return
 		}
 		for _, child := range childIDs(c) {
 			walk(child, seen)
