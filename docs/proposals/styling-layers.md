@@ -93,9 +93,19 @@ Rules:
 
 - `DefaultStyles()` fills every slot with the current hardcoded values; existing
   goldens and the no-color test must pass unchanged.
-- New-slot defaults that alias an existing slot (Label = Caption) are applied at
-  `DefaultStyles()` time, not at render time, so a host overriding `Caption`
-  alone keeps today's behavior, and a host can split them.
+- New slots that today share an existing style (labels currently render with
+  `Caption` directly — `render/fields.go`) use a **render-time fallback**: the
+  renderer honors `Label` when the host set it explicitly and falls back to
+  `Caption` otherwise (zero-value check). This is what actually preserves
+  today's behavior — a host overriding `Caption` alone keeps restyling labels,
+  exactly as it does now — while still letting a host split the two. Aliasing
+  at `DefaultStyles()` time would do the opposite of preserving behavior:
+  `st := DefaultStyles(); st.Caption = themed` (the pattern crush's
+  `a2uiThemeStyles` already uses) would leave `Label` holding the stale
+  default, so Caption-only overrides would silently stop reaching labels. If
+  implementation constraints ever force `DefaultStyles()`-time aliasing
+  instead, that is a documented behavior break for Caption-only overrides,
+  not a compatibility guarantee — say so in the changelog.
 - Zero-value glyphs fall back to defaults in `NewSurface` so a partially
   populated `Styles` from an older host doesn't render blank chrome.
 
